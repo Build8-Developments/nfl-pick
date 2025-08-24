@@ -5,7 +5,7 @@ import rateLimit from "express-rate-limit";
 import app from "./src/app.js";
 import connectDB from "./src/config/database.js";
 import { PORT, NODE_ENV, MONGODB_URI } from "./src/config/environment.js";
-import errorHandler from "./src/middlewares/errorHandler.js";
+import errorHandler from "./src/middlewares/errorHandler.middleware.js";
 import morgan from "morgan";
 
 const server = express();
@@ -38,7 +38,7 @@ const limiter = rateLimit({
   max: 100,
   message: "Too many requests, please try again later.",
 });
-server.use("/api/v1", limiter);
+server.use(limiter);
 
 // Use the app routes
 server.use("/api/v1", app);

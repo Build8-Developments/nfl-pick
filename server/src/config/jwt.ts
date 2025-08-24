@@ -11,7 +11,7 @@ export const generateToken = (userId: string, role: string) => {
   });
 };
 
-export const verifyToken = (token: string) => {
+export const verifyToken = (token: string): jwt.JwtPayload => {
   if (!JWT_SECRET) {
     throw new Error("JWT_SECRET is not defined");
   }

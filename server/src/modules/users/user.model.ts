@@ -4,24 +4,24 @@ import mongoose, { Schema, Document } from "mongoose";
 // Interface for the document
 export interface IUser extends Document {
   username: string;
-  email: string;
+  email?: string;
   passwordHash: string;
   avatar: string;
   role: "admin" | "user";
 
   // Points system
-  points: number;
-  totalBets: number;
-  correctBets: number;
-  winRate: number;
+  points?: number;
+  totalBets?: number;
+  correctBets?: number;
+  winRate?: number;
 
   // Bet references
-  bets: mongoose.Types.ObjectId[];
-  props: mongoose.Types.ObjectId[];
+  bets?: mongoose.Types.ObjectId[];
+  props?: mongoose.Types.ObjectId[];
 
   // Timestamps
-  createdAt: Date;
-  updatedAt: Date;
+  _createdAt?: Date;
+  _updatedAt?: Date;
 }
 
 const UserSchema = new Schema<IUser>(
@@ -37,7 +37,6 @@ const UserSchema = new Schema<IUser>(
 
     email: {
       type: String,
-      required: [true, "Email is required"],
       unique: true,
       trim: true,
       lowercase: true,
@@ -102,17 +101,6 @@ const UserSchema = new Schema<IUser>(
         ref: "Prop",
       },
     ],
-
-    // Timestamps
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
-
-    updatedAt: {
-      type: Date,
-      default: Date.now,
-    },
   },
   {
     timestamps: true,
@@ -120,21 +108,12 @@ const UserSchema = new Schema<IUser>(
   }
 );
 
-UserSchema.index({ username: 1 });
-UserSchema.index({ email: 1 });
 UserSchema.index({ points: -1 });
 UserSchema.index({ role: 1 });
 
 UserSchema.virtual("calculatedWinRate").get(function () {
-  if (this.totalBets === 0) return 0;
-  return Math.round((this.correctBets / this.totalBets) * 100);
-});
-
-UserSchema.pre("save", function (next) {
-  if (this.totalBets > 0) {
-    this.winRate = Math.round((this.correctBets / this.totalBets) * 100);
-  }
-  next();
+  if (!this.totalBets || this.totalBets === 0) return 0;
+  return Math.round(((this.correctBets || 0) / this.totalBets) * 100);
 });
 
 UserSchema.methods.addPoints = function (amount: number): Promise<void> {
@@ -171,11 +150,6 @@ UserSchema.statics.findByUsername = function (username: string) {
   return this.findOne({ username: username.toLowerCase() });
 };
 
-// Static method to find by email
-UserSchema.statics.findByEmail = function (email: string) {
-  return this.findOne({ email: email.toLowerCase() });
-};
-
 // Static method to get leaderboard
 UserSchema.statics.getLeaderboard = function (limit: number = 10) {
   return this.find({ role: "user" })
@@ -185,8 +159,13 @@ UserSchema.statics.getLeaderboard = function (limit: number = 10) {
 };
 
 UserSchema.pre("save", async function (next) {
-  if (!this.isModified("passwordHash")) return next();
-  this.passwordHash = await bcrypt.hash(this.passwordHash, 10);
+  if (this.totalBets && this.totalBets > 0) {
+    this.winRate = Math.round(((this.correctBets || 0) / this.totalBets) * 100);
+  }
+
+  if (this.isModified("passwordHash")) {
+    this.passwordHash = await bcrypt.hash(this.passwordHash, 10);
+  }
   next();
 });
 
