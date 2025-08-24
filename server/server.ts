@@ -6,16 +6,20 @@ import app from "./src/app.js";
 import connectDB from "./src/config/database.js";
 import { PORT, NODE_ENV, MONGODB_URI } from "./src/config/environment.js";
 import errorHandler from "./src/middlewares/errorHandler.js";
+import morgan from "morgan";
 
 const server = express();
 
+// Morgan logger
+server.use(morgan("dev"));
+
 // Global Middlewares
-app.use(
+server.use(
   helmet({
     contentSecurityPolicy: false,
   })
 );
-app.use(
+server.use(
   cors({
     origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
@@ -25,7 +29,7 @@ app.use(
   })
 );
 server.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
+server.use(express.urlencoded({ extended: true }));
 
 // Rate limiting
 const limiter = rateLimit({
