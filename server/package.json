@@ -1,0 +1,30 @@
+{
+  "name": "nfl-server",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "Seif Ashraf",
+  "type": "module",
+  "main": "server.ts",
+  "scripts": {
+    "dev": "tsx watch server.ts",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "tsc": "^2.0.4",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.1",
+    "helmet": "^8.1.0",
+    "i": "^0.3.7",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.18.0",
+    "morgan": "^1.10.1",
+    "npm": "^11.5.2"
+  }
+}
