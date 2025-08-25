@@ -1,7 +1,8 @@
 import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
 import { JWT_SECRET, JWT_EXPIRATION } from "./environment.js";
+import type { ObjectId } from "mongoose";
 
-export const generateToken = (userId: string, role: string) => {
+export const generateToken = (userId: ObjectId, role: string) => {
   if (!JWT_SECRET) {
     throw new Error("JWT_SECRET is not defined");
   }

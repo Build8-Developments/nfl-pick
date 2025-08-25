@@ -53,7 +53,7 @@ const UserSchema = new Schema<IUser>(
 
     avatar: {
       type: String,
-      default: "https://via.placeholder.com/150",
+      default: "https://placehold.co/64x64",
     },
 
     role: {

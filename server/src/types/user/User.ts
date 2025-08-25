@@ -22,3 +22,8 @@ export interface IUser {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface IUserLogin {
+  username: string;
+  password: string;
+}
