@@ -10,6 +10,8 @@ import connectDB from "./src/config/database.js";
 import { PORT, NODE_ENV, MONGODB_URI } from "./src/config/environment.js";
 import errorHandler from "./src/middlewares/errorHandler.middleware.js";
 import morgan from "morgan";
+import cron from "node-cron";
+import { syncWeekGames } from "./src/modules/sync/sync.service.js";
 
 const server = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -68,6 +70,21 @@ server.use(errorHandler);
         `Server is running on http://localhost:${PORT} in ${NODE_ENV} mode`
       );
       console.log(`Health check: http://localhost:${PORT}/api/v1/health`);
+      // Schedule: At 00:00 on the first Monday of every month
+      // Cron format: m h dom mon dow
+      cron.schedule("0 0 1-7 * 1", async () => {
+        try {
+          const { week, season } = await syncWeekGames();
+          console.log(
+            `[Scheduler] Synced NFL games for week ${week}, season ${season}`
+          );
+        } catch (err) {
+          console.error("[Scheduler] Failed monthly sync:", err);
+        }
+      });
+      console.log(
+        "[Scheduler] Monthly sync scheduled: 00:00 on the first Monday of each month"
+      );
     });
   } catch (error) {
     console.error("Error starting the server", error);

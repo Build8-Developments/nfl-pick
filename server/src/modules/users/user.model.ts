@@ -1,25 +1,20 @@
 import bcrypt from "bcryptjs";
 import mongoose, { Schema, Document } from "mongoose";
 
-// Interface for the document
 export interface IUser extends Document {
   username: string;
-  email?: string;
   passwordHash: string;
   avatar: string;
   role: "admin" | "user";
 
-  // Points system
   points?: number;
   totalBets?: number;
   correctBets?: number;
   winRate?: number;
 
-  // Bet references
   bets?: mongoose.Types.ObjectId[];
   props?: mongoose.Types.ObjectId[];
 
-  // Timestamps
   _createdAt?: Date;
   _updatedAt?: Date;
 }
@@ -33,17 +28,6 @@ const UserSchema = new Schema<IUser>(
       trim: true,
       minlength: [3, "Username must be at least 3 characters"],
       maxlength: [30, "Username cannot exceed 30 characters"],
-    },
-
-    email: {
-      type: String,
-      unique: true,
-      trim: true,
-      lowercase: true,
-      match: [
-        /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
-        "Please enter a valid email",
-      ],
     },
 
     passwordHash: {
@@ -64,7 +48,7 @@ const UserSchema = new Schema<IUser>(
 
     points: {
       type: Number,
-      default: 100, // Start with 100 points
+      default: 100,
       min: [0, "Points cannot be negative"],
     },
 
@@ -87,7 +71,6 @@ const UserSchema = new Schema<IUser>(
       max: [100, "Win rate cannot exceed 100%"],
     },
 
-    // Bet references
     bets: [
       {
         type: Schema.Types.ObjectId,
@@ -137,7 +120,6 @@ UserSchema.methods.addBet = function (
   return this.save();
 };
 
-// Method to add prop
 UserSchema.methods.addProp = function (
   propId: mongoose.Types.ObjectId
 ): Promise<void> {
@@ -145,12 +127,10 @@ UserSchema.methods.addProp = function (
   return this.save();
 };
 
-// Static method to find by username
 UserSchema.statics.findByUsername = function (username: string) {
   return this.findOne({ username: username.toLowerCase() });
 };
 
-// Static method to get leaderboard
 UserSchema.statics.getLeaderboard = function (limit: number = 10) {
   return this.find({ role: "user" })
     .sort({ points: -1 })
