@@ -1,7 +1,7 @@
 import React from "react";
 import { Outlet, Link, useNavigate, useLocation } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
-import { Button } from "../components/ui/button.jsx";
+import { useAuth } from "../contexts/useAuth";
+import { Button } from "./ui/button.tsx";
 import {
   Home,
   FileText,
@@ -33,7 +33,7 @@ const Layout = () => {
       : []),
   ];
 
-  const isActive = (href) => {
+  const isActive = (href: string) => {
     if (href === "/") {
       return location.pathname === "/";
     }
@@ -106,7 +106,8 @@ const Layout = () => {
                 <p className="text-muted-foreground">
                   {currentUser?.seasonRecord.wins}-
                   {currentUser?.seasonRecord.losses}(
-                  {(currentUser?.seasonRecord.percentage * 100).toFixed(1)}%)
+                  {(currentUser?.seasonRecord.percentage ?? 0 * 100).toFixed(1)}
+                  %)
                 </p>
               </div>
               <Button

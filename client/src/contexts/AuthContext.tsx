@@ -1,19 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
+import type { ReactNode } from "react";
 import { users } from "../data/mockData";
+import { AuthContext } from "./AuthContext";
+import { type AuthContextValue, type User } from "./AuthContext";
 
-const AuthContext = createContext();
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
-};
-
-export const AuthProvider = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
     // Check for stored user session
@@ -28,7 +21,8 @@ export const AuthProvider = ({ children }) => {
     setIsLoading(false);
   }, []);
 
-  const login = (email, password) => {
+  const login: AuthContextValue["login"] = (email, _password) => {
+    void _password;
     // Simple mock authentication
     const user = users.find((u) => u.email === email);
     if (user) {
@@ -44,7 +38,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem("nfl-picks-user");
   };
 
-  const value = {
+  const value: AuthContextValue = {
     currentUser,
     login,
     logout,

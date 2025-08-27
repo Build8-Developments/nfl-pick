@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,7 +27,7 @@ const Login = () => {
     return <Navigate to="/" replace />;
   }
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
@@ -43,7 +43,7 @@ const Login = () => {
     setIsLoading(false);
   };
 
-  const handleQuickLogin = (userEmail) => {
+  const handleQuickLogin = (userEmail: string) => {
     setEmail(userEmail);
     setPassword("password"); // Mock password
     const result = login(userEmail, "password");

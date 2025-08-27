@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useAuth } from "../contexts/AuthContext";
+import { useState, useEffect } from "react";
+import { useAuth } from "../contexts/useAuth";
 import {
   Card,
   CardContent,
@@ -42,16 +42,11 @@ import {
   AlertTriangle,
   Save,
 } from "lucide-react";
-import {
-  currentWeekGames,
-  nflPlayers,
-  nflTeams,
-  mockUserPicks,
-} from "../data/mockData";
+import { currentWeekGames, nflPlayers, mockUserPicks } from "../data/mockData";
 
 const Picks = () => {
   const { currentUser } = useAuth();
-  const [picks, setPicks] = useState({});
+  const [picks, setPicks] = useState<Record<number, string>>({});
   const [lockOfWeek, setLockOfWeek] = useState("");
   const [touchdownScorer, setTouchdownScorer] = useState("");
   const [propBet, setPropBet] = useState("");
@@ -71,7 +66,7 @@ const Picks = () => {
       setHasSubmitted(existingPicks.isFinalized);
 
       // Load spread picks
-      const spreadPicks = {};
+      const spreadPicks: Record<number, string> = {};
       existingPicks.picks.forEach((pick) => {
         spreadPicks[pick.gameId] = pick.selectedTeam;
       });
@@ -93,20 +88,23 @@ const Picks = () => {
     }
   }, [currentUser]);
 
-  const handlePickChange = (gameId, team) => {
+  const handlePickChange = (gameId: number, team: string) => {
     setPicks((prev) => ({
       ...prev,
       [gameId]: team,
     }));
   };
 
-  const handleTouchdownScorerSelect = (playerId, playerName) => {
-    setTouchdownScorer(playerId);
+  const handleTouchdownScorerSelect = (
+    playerId: number,
+    playerName: string
+  ) => {
+    setTouchdownScorer(playerId.toString());
     setPlayerSearchValue(playerName);
     setPlayerSearchOpen(false);
   };
 
-  const formatGameTime = (gameTime) => {
+  const formatGameTime = (gameTime: string) => {
     return new Date(gameTime).toLocaleDateString("en-US", {
       weekday: "short",
       month: "short",
@@ -116,11 +114,15 @@ const Picks = () => {
     });
   };
 
-  const isGameStarted = (gameTime) => {
+  const isGameStarted = (gameTime: string) => {
     return new Date(gameTime) <= new Date();
   };
 
-  const getSpreadDisplay = (game) => {
+  const getSpreadDisplay = (game: {
+    spread: number;
+    homeTeam: { abbreviation: string };
+    awayTeam: { abbreviation: string };
+  }) => {
     const spread = Math.abs(game.spread);
     const favoredTeam = game.spread < 0 ? game.homeTeam : game.awayTeam;
     const underdogTeam = game.spread < 0 ? game.awayTeam : game.homeTeam;
@@ -207,7 +209,13 @@ const Picks = () => {
         <CardContent>
           <div className="space-y-4">
             {currentWeekGames.map((game) => {
-              const spreadInfo = getSpreadDisplay(game);
+              const spreadInfo = getSpreadDisplay(
+                game as {
+                  spread: number;
+                  homeTeam: { abbreviation: string };
+                  awayTeam: { abbreviation: string };
+                }
+              );
               const gameStarted = isGameStarted(game.gameTime);
 
               return (
@@ -233,8 +241,8 @@ const Picks = () => {
 
                   <div className="flex items-center justify-between">
                     <div className="text-lg font-medium">
-                      {game.awayTeam.abbreviation} @{" "}
-                      {game.homeTeam.abbreviation}
+                      {game.awayTeam?.abbreviation} @{" "}
+                      {game.homeTeam?.abbreviation}
                     </div>
                     <div className="text-sm text-muted-foreground">
                       {spreadInfo.favoredTeam} -{spreadInfo.spread}
@@ -244,34 +252,40 @@ const Picks = () => {
                   <div className="flex gap-2 mt-3">
                     <Button
                       variant={
-                        picks[game.id] === game.awayTeam.abbreviation
+                        picks[game.id] === game.awayTeam?.abbreviation
                           ? "default"
                           : "outline"
                       }
                       size="sm"
                       className="flex-1"
                       onClick={() =>
-                        handlePickChange(game.id, game.awayTeam.abbreviation)
+                        handlePickChange(
+                          game.id,
+                          game.awayTeam?.abbreviation as string
+                        )
                       }
                       disabled={gameStarted}
                     >
-                      {game.awayTeam.abbreviation}
+                      {game.awayTeam?.abbreviation}
                       {game.spread > 0 && ` +${Math.abs(game.spread)}`}
                     </Button>
                     <Button
                       variant={
-                        picks[game.id] === game.homeTeam.abbreviation
+                        picks[game.id] === game.homeTeam?.abbreviation
                           ? "default"
                           : "outline"
                       }
                       size="sm"
                       className="flex-1"
                       onClick={() =>
-                        handlePickChange(game.id, game.homeTeam.abbreviation)
+                        handlePickChange(
+                          game.id,
+                          game.homeTeam?.abbreviation as string
+                        )
                       }
                       disabled={gameStarted}
                     >
-                      {game.homeTeam.abbreviation}
+                      {game.homeTeam?.abbreviation}
                       {game.spread < 0 && ` +${Math.abs(game.spread)}`}
                     </Button>
                   </div>
@@ -305,8 +319,8 @@ const Picks = () => {
 
                 return (
                   <SelectItem key={game.id} value={`${game.id}-${userPick}`}>
-                    {userPick} ({game.awayTeam.abbreviation} @{" "}
-                    {game.homeTeam.abbreviation})
+                    {userPick} ({game.awayTeam?.abbreviation} @{" "}
+                    {game.homeTeam?.abbreviation})
                   </SelectItem>
                 );
               })}
@@ -355,8 +369,8 @@ const Picks = () => {
                         value={player.name}
                         onSelect={() =>
                           handleTouchdownScorerSelect(
-                            player.id.toString(),
-                            player.name
+                            player.id,
+                            player.name as string
                           )
                         }
                       >
@@ -401,7 +415,9 @@ const Picks = () => {
               id="propBet"
               placeholder="e.g., Over 250.5 passing yards - Patrick Mahomes"
               value={propBet}
-              onChange={(e) => setPropBet(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setPropBet(e.target.value)
+              }
             />
             <p className="text-xs text-muted-foreground">
               Describe your prop bet clearly. Admin will approve or reject it.

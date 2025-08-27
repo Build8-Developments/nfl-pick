@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useAuth } from "../contexts/AuthContext";
+import { useState } from "react";
+import { useAuth } from "../contexts/useAuth";
 import {
   Card,
   CardContent,
@@ -21,16 +21,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Settings,
   CheckCircle,
   XCircle,
   Edit,
@@ -46,13 +36,14 @@ import {
   pendingPropBets,
   mockUserPicks,
   users,
-  weeklyResults,
 } from "../data/mockData";
 
 const Admin = () => {
   const { currentUser } = useAuth();
-  const [gameResults, setGameResults] = useState({});
-  const [propBetActions, setPropBetActions] = useState({});
+  const [gameResults, setGameResults] = useState<Record<number, string>>({});
+  const [propBetActions, setPropBetActions] = useState<Record<number, string>>(
+    {}
+  );
   const [isUpdating, setIsUpdating] = useState(false);
   const [selectedWeek, setSelectedWeek] = useState("10");
 
@@ -69,14 +60,14 @@ const Admin = () => {
     );
   }
 
-  const handleGameResultUpdate = (gameId, winner) => {
+  const handleGameResultUpdate = (gameId: number, winner: string) => {
     setGameResults((prev) => ({
       ...prev,
       [gameId]: winner,
     }));
   };
 
-  const handlePropBetAction = (propBetId, action) => {
+  const handlePropBetAction = (propBetId: number, action: string) => {
     setPropBetActions((prev) => ({
       ...prev,
       [propBetId]: action,
@@ -99,7 +90,7 @@ const Admin = () => {
     // Show success message
   };
 
-  const formatGameTime = (gameTime) => {
+  const formatGameTime = (gameTime: string) => {
     return new Date(gameTime).toLocaleDateString("en-US", {
       weekday: "short",
       month: "short",
@@ -109,7 +100,7 @@ const Admin = () => {
     });
   };
 
-  const getGameStatus = (gameTime) => {
+  const getGameStatus = (gameTime: string) => {
     const now = new Date();
     const gameDate = new Date(gameTime);
 
@@ -221,19 +212,19 @@ const Admin = () => {
               <div className="space-y-4">
                 {currentWeekGames.map((game) => {
                   const status = getGameStatus(game.gameTime);
-                  const result = gameResults[game.id];
+                  const result = gameResults[game.id] as string | undefined;
 
                   return (
                     <div key={game.id} className="p-4 border rounded-lg">
                       <div className="flex items-center justify-between mb-3">
                         <div>
                           <div className="font-medium text-lg">
-                            {game.awayTeam.abbreviation} @{" "}
-                            {game.homeTeam.abbreviation}
+                            {game.awayTeam?.abbreviation} @{" "}
+                            {game.homeTeam?.abbreviation}
                           </div>
                           <div className="text-sm text-muted-foreground">
                             {formatGameTime(game.gameTime)} • Spread:{" "}
-                            {game.homeTeam.abbreviation}{" "}
+                            {game.homeTeam?.abbreviation}{" "}
                             {game.spread > 0 ? "+" : ""}
                             {game.spread}
                           </div>
@@ -266,11 +257,15 @@ const Admin = () => {
                             <SelectValue placeholder="Select winner against spread" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value={game.awayTeam.abbreviation}>
-                              {game.awayTeam.abbreviation} covers
+                            <SelectItem
+                              value={game.awayTeam?.abbreviation as string}
+                            >
+                              {game.awayTeam?.abbreviation} covers
                             </SelectItem>
-                            <SelectItem value={game.homeTeam.abbreviation}>
-                              {game.homeTeam.abbreviation} covers
+                            <SelectItem
+                              value={game.homeTeam?.abbreviation as string}
+                            >
+                              {game.homeTeam?.abbreviation} covers
                             </SelectItem>
                           </SelectContent>
                         </Select>

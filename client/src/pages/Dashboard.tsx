@@ -1,5 +1,5 @@
 import React from "react";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 import {
   Card,
   CardContent,
@@ -41,9 +41,11 @@ const Dashboard = () => {
   // Calculate next game time
   const nextGame = currentWeekGames
     .filter((game) => new Date(game.gameTime) > new Date())
-    .sort((a, b) => new Date(a.gameTime) - new Date(b.gameTime))[0];
+    .sort(
+      (a, b) => new Date(a.gameTime).getTime() - new Date(b.gameTime).getTime()
+    )[0];
 
-  const formatGameTime = (gameTime) => {
+  const formatGameTime = (gameTime: string) => {
     return new Date(gameTime).toLocaleDateString("en-US", {
       weekday: "short",
       month: "short",
@@ -76,8 +78,8 @@ const Dashboard = () => {
               {currentUser?.seasonRecord.losses}
             </div>
             <p className="text-xs text-muted-foreground">
-              {(currentUser?.seasonRecord.percentage * 100).toFixed(1)}% win
-              rate
+              {(currentUser?.seasonRecord.percentage ?? 0 * 100).toFixed(1)}%
+              win rate
             </p>
           </CardContent>
         </Card>
@@ -190,11 +192,12 @@ const Dashboard = () => {
               <div className="space-y-3">
                 <div className="text-center">
                   <div className="text-lg font-semibold">
-                    {nextGame.awayTeam.abbreviation} @{" "}
-                    {nextGame.homeTeam.abbreviation}
+                    {nextGame.awayTeam?.abbreviation} @{" "}
+                    {nextGame.homeTeam?.abbreviation}
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    {nextGame.homeTeam.name} {nextGame.spread > 0 ? "+" : ""}
+                    {nextGame.homeTeam?.name}{" "}
+                    {nextGame.spread && nextGame.spread > 0 ? "+" : ""}
                     {nextGame.spread}
                   </div>
                 </div>

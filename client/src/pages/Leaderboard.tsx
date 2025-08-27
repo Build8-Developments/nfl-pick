@@ -1,4 +1,3 @@
-import React, { useState } from "react";
 import {
   Card,
   CardContent,
@@ -7,7 +6,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Trophy,
@@ -22,8 +20,6 @@ import {
 import { users, weeklyResults, scoringSystem } from "../data/mockData";
 
 const Leaderboard = () => {
-  const [selectedWeek, setSelectedWeek] = useState("all");
-
   // Calculate season standings
   const seasonStandings = users
     .map((user) => ({
@@ -44,7 +40,7 @@ const Leaderboard = () => {
     }))
     .sort((a, b) => b.totalPoints - a.totalPoints);
 
-  const getRankIcon = (rank) => {
+  const getRankIcon = (rank: number) => {
     switch (rank) {
       case 1:
         return <Crown className="h-5 w-5 text-yellow-500" />;
@@ -57,7 +53,7 @@ const Leaderboard = () => {
     }
   };
 
-  const getRankBadgeVariant = (rank) => {
+  const getRankBadgeVariant = (rank: number) => {
     switch (rank) {
       case 1:
         return "default";

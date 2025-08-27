@@ -4,13 +4,14 @@ import {
   Route,
   Navigate,
 } from "react-router-dom";
-import { AuthProvider, useAuth } from "./contexts/AuthContext.jsx";
-import Layout from "./components/Layout.jsx";
-import Login from "./pages/Login.jsx";
-import Dashboard from "./pages/Dashboard.jsx";
-import Picks from "./pages/Picks.jsx";
-import Leaderboard from "./pages/Leaderboard.jsx";
-import Admin from "./pages/Admin.jsx";
+import { AuthProvider } from "./contexts/AuthContext.tsx";
+import { useAuth } from "./contexts/useAuth";
+import Layout from "./components/Layout.tsx";
+import Login from "./pages/Login.tsx";
+import Dashboard from "./pages/Dashboard.tsx";
+import Picks from "./pages/Picks.tsx";
+import Leaderboard from "./pages/Leaderboard.tsx";
+import Admin from "./pages/Admin.tsx";
 import "./App.css";
 
 // Protected Route component
