@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/useAuth";
+import { useNavigate } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -41,11 +42,13 @@ import {
   ChevronsUpDown,
   AlertTriangle,
   Save,
+  Eye,
 } from "lucide-react";
 import { currentWeekGames, nflPlayers, mockUserPicks } from "../data/mockData";
 
 const Picks = () => {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const [picks, setPicks] = useState<Record<number, string>>({});
   const [lockOfWeek, setLockOfWeek] = useState("");
   const [touchdownScorer, setTouchdownScorer] = useState("");
@@ -54,11 +57,13 @@ const Picks = () => {
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [playerSearchOpen, setPlayerSearchOpen] = useState(false);
   const [playerSearchValue, setPlayerSearchValue] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
 
   const currentWeek = 10;
 
   // Load existing picks if user has already submitted
   useEffect(() => {
+    setIsLoading(true);
     const existingPicks = mockUserPicks.find(
       (pick) => pick.userId === currentUser?.id
     );
@@ -86,6 +91,7 @@ const Picks = () => {
         setPropBet(existingPicks.propBet.description);
       }
     }
+    setIsLoading(false);
   }, [currentUser]);
 
   const handlePickChange = (gameId: number, team: string) => {
@@ -165,37 +171,49 @@ const Picks = () => {
       player.team.toLowerCase().includes(playerSearchValue.toLowerCase())
   );
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-2 text-muted-foreground">Loading your picks...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
             Make Your Picks
           </h1>
           <p className="text-muted-foreground mt-1">
             Week {currentWeek} • {currentWeekGames.length} games
           </p>
         </div>
-        {hasSubmitted && (
-          <Badge variant="default" className="text-sm">
-            Picks Submitted
-          </Badge>
-        )}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/live-picks')}
+          >
+            <Eye className="h-4 w-4 mr-2" />
+            View Live Picks
+          </Button>
+          {hasSubmitted && (
+            <Alert>
+              <Check className="h-4 w-4" />
+              <AlertDescription>
+                Your picks for Week {currentWeek} have been submitted successfully.
+                You can still edit them until the first game starts.
+              </AlertDescription>
+            </Alert>
+          )}
+        </div>
       </div>
-
-      {/* Status Alert */}
-      {hasSubmitted && (
-        <Alert>
-          <Check className="h-4 w-4" />
-          <AlertDescription>
-            Your picks for Week {currentWeek} have been submitted successfully.
-            You can still edit them until the first game starts.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Spread Picks */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -230,7 +248,7 @@ const Picks = () => {
                       {formatGameTime(game.gameTime)}
                       {gameStarted && (
                         <Badge variant="secondary" className="ml-2 text-xs">
-                          Started
+                          Game Started
                         </Badge>
                       )}
                     </div>
@@ -239,7 +257,7 @@ const Picks = () => {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-center">
                     <div className="text-lg font-medium">
                       {game.awayTeam?.abbreviation} @{" "}
                       {game.homeTeam?.abbreviation}
@@ -249,7 +267,7 @@ const Picks = () => {
                     </div>
                   </div>
 
-                  <div className="flex gap-2 mt-3">
+                  <div className="flex flex-col sm:flex-row gap-2 mt-3">
                     <Button
                       variant={
                         picks[game.id] === game.awayTeam?.abbreviation
@@ -266,8 +284,7 @@ const Picks = () => {
                       }
                       disabled={gameStarted}
                     >
-                      {game.awayTeam?.abbreviation}
-                      {game.spread > 0 && ` +${Math.abs(game.spread)}`}
+                      {game.awayTeam?.abbreviation} {game.spread > 0 ? `+${Math.abs(game.spread)}` : ``}
                     </Button>
                     <Button
                       variant={
@@ -285,8 +302,7 @@ const Picks = () => {
                       }
                       disabled={gameStarted}
                     >
-                      {game.homeTeam?.abbreviation}
-                      {game.spread < 0 && ` +${Math.abs(game.spread)}`}
+                      {game.homeTeam?.abbreviation} {game.spread < 0 ? `+${Math.abs(game.spread)}` : ``}
                     </Button>
                   </div>
                 </div>
@@ -319,8 +335,7 @@ const Picks = () => {
 
                 return (
                   <SelectItem key={game.id} value={`${game.id}-${userPick}`}>
-                    {userPick} ({game.awayTeam?.abbreviation} @{" "}
-                    {game.homeTeam?.abbreviation})
+                    {userPick}
                   </SelectItem>
                 );
               })}
@@ -363,7 +378,7 @@ const Picks = () => {
                 <CommandList>
                   <CommandEmpty>No players found.</CommandEmpty>
                   <CommandGroup>
-                    {filteredPlayers.slice(0, 10).map((player) => (
+                    {filteredPlayers.map((player) => (
                       <CommandItem
                         key={player.id}
                         value={player.name}
@@ -405,7 +420,7 @@ const Picks = () => {
             Prop Bet
           </CardTitle>
           <CardDescription>
-            Submit a prop bet for admin approval
+            Submit your prop bet
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -418,6 +433,11 @@ const Picks = () => {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 setPropBet(e.target.value)
               }
+            />
+            <Label htmlFor="propBetOdds">Odds</Label>
+            <Input
+              id="propBetOdds"
+              placeholder="e.g., -190"
             />
             <p className="text-xs text-muted-foreground">
               Describe your prop bet clearly. Admin will approve or reject it.
@@ -462,9 +482,7 @@ const Picks = () => {
               <div
                 className="bg-primary h-2 rounded-full transition-all duration-300"
                 style={{
-                  width: `${
-                    (Object.keys(picks).length / currentWeekGames.length) * 100
-                  }%`,
+                  width: `${(Object.keys(picks).length / currentWeekGames.length) * 100}%`,
                 }}
               ></div>
             </div>

@@ -40,7 +40,7 @@ import {
 
 const Admin = () => {
   const { currentUser } = useAuth();
-  const [gameResults, setGameResults] = useState<Record<number, string>>({});
+
   const [propBetActions, setPropBetActions] = useState<Record<number, string>>(
     {}
   );
@@ -60,12 +60,7 @@ const Admin = () => {
     );
   }
 
-  const handleGameResultUpdate = (gameId: number, winner: string) => {
-    setGameResults((prev) => ({
-      ...prev,
-      [gameId]: winner,
-    }));
-  };
+
 
   const handlePropBetAction = (propBetId: number, action: string) => {
     setPropBetActions((prev) => ({
@@ -74,13 +69,7 @@ const Admin = () => {
     }));
   };
 
-  const saveGameResults = async () => {
-    setIsUpdating(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setIsUpdating(false);
-    // Show success message
-  };
+
 
   const savePropBetActions = async () => {
     setIsUpdating(true);
@@ -212,7 +201,6 @@ const Admin = () => {
               <div className="space-y-4">
                 {currentWeekGames.map((game) => {
                   const status = getGameStatus(game.gameTime);
-                  const result = gameResults[game.id] as string | undefined;
 
                   return (
                     <div key={game.id} className="p-4 border rounded-lg">
@@ -247,59 +235,16 @@ const Admin = () => {
                       </div>
 
                       <div className="flex gap-2">
-                        <Select
-                          value={result || ""}
-                          onValueChange={(value) =>
-                            handleGameResultUpdate(game.id, value)
-                          }
-                        >
-                          <SelectTrigger className="flex-1">
-                            <SelectValue placeholder="Select winner against spread" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem
-                              value={game.awayTeam?.abbreviation as string}
-                            >
-                              {game.awayTeam?.abbreviation} covers
-                            </SelectItem>
-                            <SelectItem
-                              value={game.homeTeam?.abbreviation as string}
-                            >
-                              {game.homeTeam?.abbreviation} covers
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-
-                        {result && (
-                          <Badge variant="default" className="self-center">
-                            {result} covers
-                          </Badge>
-                        )}
+                        <Badge variant="default" className="self-center">
+                          Results pulled from API
+                        </Badge>
                       </div>
                     </div>
                   );
                 })}
               </div>
 
-              <div className="mt-6 flex justify-end">
-                <Button
-                  onClick={saveGameResults}
-                  disabled={isUpdating || Object.keys(gameResults).length === 0}
-                  className="min-w-32"
-                >
-                  {isUpdating ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="mr-2 h-4 w-4" />
-                      Save Results
-                    </>
-                  )}
-                </Button>
-              </div>
+
             </CardContent>
           </Card>
         </TabsContent>

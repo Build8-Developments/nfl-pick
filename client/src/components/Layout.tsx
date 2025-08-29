@@ -9,6 +9,7 @@ import {
   LogOut,
   Menu,
   X,
+  Eye,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -26,6 +27,7 @@ const Layout = () => {
   const navigation = [
     { name: "Dashboard", href: "/", icon: Home },
     { name: "Make Picks", href: "/picks", icon: FileText },
+    { name: "Live Picks", href: "/live-picks", icon: Eye },
     { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
     ...(currentUser?.isAdmin
       ? [{ name: "Admin", href: "/admin", icon: Settings }]

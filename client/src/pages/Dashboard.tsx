@@ -18,6 +18,9 @@ import {
   Users,
 } from "lucide-react";
 import {
+  Tabs, TabsContent, TabsList, TabsTrigger
+} from "@/components/ui/tabs";
+import {
   users,
   currentWeekGames,
   mockUserPicks,
@@ -130,18 +133,23 @@ const Dashboard = () => {
               Week {currentWeek} Status
             </CardTitle>
             <CardDescription>Your picks for this week</CardDescription>
+            {userPicks && !userPicks.isFinalized && (
+              <div className="pt-2 text-sm text-muted-foreground">
+                <p>Picks are in progress. Time remaining to submit: 2d 4h 15m</p>
+              </div>
+            )}
+
           </CardHeader>
           <CardContent>
             {hasSubmittedPicks ? (
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Picks Status</span>
+                <div className="flex items-center justify-end">
                   <Badge variant="default">Submitted</Badge>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span>Spread Picks:</span>
-                    <span>{userPicks.picks.length} games</span>
+                    <span>{userPicks.picks.length} / {currentWeekGames.length} games</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Lock of Week:</span>
@@ -167,7 +175,7 @@ const Dashboard = () => {
                 <div className="text-muted-foreground">
                   <Clock className="h-8 w-8 mx-auto mb-2" />
                   <p>
-                    You haven't submitted your picks for Week {currentWeek} yet.
+                    You haven\'t submitted your picks for Week {currentWeek} yet.
                   </p>
                 </div>
                 <Button asChild className="w-full">
@@ -230,40 +238,59 @@ const Dashboard = () => {
           <CardDescription>Your performance in recent weeks</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {recentResults.map((result) => {
-              const userResult = result.results.find(
-                (r) => r.userId === currentUser?.id
-              );
-              const isWinner = result.winner.id === currentUser?.id;
+          <Tabs defaultValue="all" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="second">Second</TabsTrigger>
+              <TabsTrigger value="loser">Loser</TabsTrigger>
+            </TabsList>
+            <TabsContent value="all">
+              <div className="space-y-4">
+                {recentResults.map((result) => {
+                  const userResult = result.results.find(
+                    (r) => r.userId === currentUser?.id
+                  );
+                  const isWinner = result.winner.id === currentUser?.id;
 
-              return (
-                <div
-                  key={result.week}
-                  className="flex items-center justify-between p-3 rounded-lg border"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="text-sm font-medium">
-                      Week {result.week}
+                  return (
+                    <div
+                      key={result.week}
+                      className="flex items-center justify-between p-3 rounded-lg border"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="text-sm font-medium">
+                          Week {result.week}
+                        </div>
+                        {isWinner && (
+                          <Badge variant="default" className="text-xs">
+                            Winner
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-medium">
+                          {userResult?.totalPoints} points
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {userResult?.correctPicks} correct picks
+                        </div>
+                      </div>
                     </div>
-                    {isWinner && (
-                      <Badge variant="default" className="text-xs">
-                        Winner
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-medium">
-                      {userResult?.totalPoints} points
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {userResult?.correctPicks} correct picks
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                  );
+                })}
+              </div>
+            </TabsContent>
+            <TabsContent value="second">
+              <div className="text-center text-muted-foreground py-8">
+                <p>Content for 'Second' tab will go here.</p>
+              </div>
+            </TabsContent>
+            <TabsContent value="loser">
+              <div className="text-center text-muted-foreground py-8">
+                <p>Content for 'Loser' tab will go here.</p>
+              </div>
+            </TabsContent>
+          </Tabs>
           <div className="mt-4">
             <Button variant="outline" size="sm" asChild className="w-full">
               <Link to="/leaderboard">View Full History</Link>

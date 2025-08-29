@@ -4,24 +4,24 @@
 export const users = [
   {
     id: 1,
-    name: "Player 1",
-    email: "player1@example.com",
+    name: "Luke",
+    email: "luke@example.com",
     isAdmin: true,
     seasonRecord: { wins: 45, losses: 23, percentage: 0.662 },
     weeklyWins: 3,
   },
   {
     id: 2,
-    name: "Player 2",
-    email: "player2@example.com",
+    name: "Mike",
+    email: "mike@example.com",
     isAdmin: false,
     seasonRecord: { wins: 41, losses: 27, percentage: 0.603 },
     weeklyWins: 2,
   },
   {
     id: 3,
-    name: "Player 3",
-    email: "player3@example.com",
+    name: "Gav",
+    email: "gav@example.com",
     isAdmin: false,
     seasonRecord: { wins: 38, losses: 30, percentage: 0.559 },
     weeklyWins: 1,
@@ -449,7 +449,7 @@ export const pendingPropBets = [
 // Scoring system
 export const scoringSystem = {
   correctPick: 1,
-  correctLockOfWeek: 2, // Double points for lock of week
+  correctLockOfWeek: 3,
   correctTouchdownScorer: 1,
   correctPropBet: 1,
 };
