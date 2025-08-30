@@ -8,6 +8,8 @@ const required = [
   "MONGODB_URI",
   "JWT_SECRET",
   "JWT_EXPIRATION",
+  "RAPIDAPI_KEY",
+  "RAPIDAPI_HOST",
 ] as const;
 
 for (const key of required) {
@@ -16,5 +18,12 @@ for (const key of required) {
   }
 }
 
-export const { PORT, NODE_ENV, MONGODB_URI, JWT_SECRET, JWT_EXPIRATION } =
-  process.env as Record<(typeof required)[number], string>;
+export const {
+  PORT,
+  NODE_ENV,
+  MONGODB_URI,
+  JWT_SECRET,
+  JWT_EXPIRATION,
+  RAPIDAPI_KEY,
+  RAPIDAPI_HOST,
+} = process.env as Record<(typeof required)[number], string>;
