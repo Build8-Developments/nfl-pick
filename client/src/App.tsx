@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard.tsx";
 import Picks from "./pages/Picks.tsx";
 import Leaderboard from "./pages/Leaderboard.tsx";
 import Admin from "./pages/Admin.tsx";
+import LivePicks from "./pages/LivePicks.tsx";
 import "./App.css";
 
 // Protected Route component
@@ -50,6 +51,7 @@ function App() {
             <Route path="picks" element={<Picks />} />
             <Route path="leaderboard" element={<Leaderboard />} />
             <Route path="admin" element={<Admin />} />
+            <Route path="live-picks" element={<LivePicks />} />
           </Route>
         </Routes>
       </Router>

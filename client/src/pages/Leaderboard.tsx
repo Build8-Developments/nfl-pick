@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -5,11 +6,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Trophy,
-  Target,
+
   TrendingUp,
   Calendar,
   Medal,
@@ -54,16 +56,16 @@ const Leaderboard = () => {
   };
 
   const getRankBadgeVariant = (rank: number) => {
-    switch (rank) {
-      case 1:
-        return "default";
-      case 2:
-        return "secondary";
-      case 3:
-        return "outline";
-      default:
-        return "outline";
-    }
+    if (rank === 1) return "default";
+    if (rank === 2) return "secondary";
+    if (rank === 3) return "outline";
+    return "outline";
+  };
+
+  const [expandedWeek, setExpandedWeek] = useState<number | null>(null);
+
+  const toggleWeekExpansion = (week: number) => {
+    setExpandedWeek(expandedWeek === week ? null : week);
   };
 
   // Get weekly breakdown data
@@ -200,76 +202,75 @@ const Leaderboard = () => {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Best Win Rate
-                </CardTitle>
-                <Target className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {
-                    users.sort(
-                      (a, b) =>
-                        b.seasonRecord.percentage - a.seasonRecord.percentage
-                    )[0]?.name
-                  }
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {(
-                    users.sort(
-                      (a, b) =>
-                        b.seasonRecord.percentage - a.seasonRecord.percentage
-                    )[0]?.seasonRecord.percentage * 100
-                  ).toFixed(1)}
-                  %
-                </p>
-              </CardContent>
-            </Card>
+
           </div>
 
-          {/* Scoring System */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Scoring System</CardTitle>
-              <CardDescription>
-                How points are awarded each week
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-3 rounded-lg bg-muted">
-                  <div className="text-2xl font-bold">
-                    {scoringSystem.correctPick}
+            <Card>
+              <CardHeader>
+                <CardTitle>Scoring System</CardTitle>
+                <CardDescription>
+                  How points are awarded each week
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center p-3 rounded-lg bg-muted">
+                    <div className="text-2xl font-bold">
+                      {scoringSystem.correctPick}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Correct Pick
+                    </div>
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    Correct Pick
+                  <div className="text-center p-3 rounded-lg bg-muted">
+                    <div className="text-2xl font-bold">
+                      {scoringSystem.correctLockOfWeek}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Lock of Week
+                    </div>
+                  </div>
+                  <div className="text-center p-3 rounded-lg bg-muted">
+                    <div className="text-2xl font-bold">
+                      {scoringSystem.correctTouchdownScorer}
+                    </div>
+                    <div className="text-sm text-muted-foreground">TD Scorer</div>
+                  </div>
+                  <div className="text-center p-3 rounded-lg bg-muted">
+                    <div className="text-2xl font-bold">
+                      {scoringSystem.correctPropBet}
+                    </div>
+                    <div className="text-sm text-muted-foreground">Prop Bet</div>
                   </div>
                 </div>
-                <div className="text-center p-3 rounded-lg bg-muted">
-                  <div className="text-2xl font-bold">
-                    {scoringSystem.correctLockOfWeek}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Lock of Week
-                  </div>
+              </CardContent>
+            </Card>
+
+            {/* User Stats Summary */}
+            <Card>
+              <CardHeader>
+                <CardTitle>User Stats Summary</CardTitle>
+                <CardDescription>
+                  Pick percentages for each user
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {seasonStandings.map((user) => (
+                    <div key={user.id} className="flex items-center justify-between p-3 rounded-lg border">
+                      <div className="flex items-center gap-3">
+                        <img src="/user_avatar.png" alt="User Avatar" className="h-8 w-8 rounded-full" />
+                        <div className="font-medium">{user.name}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-medium">{user.seasonRecord.percentage.toFixed(1)}%</div>
+                        <div className="text-xs text-muted-foreground">Overall Pick %</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="text-center p-3 rounded-lg bg-muted">
-                  <div className="text-2xl font-bold">
-                    {scoringSystem.correctTouchdownScorer}
-                  </div>
-                  <div className="text-sm text-muted-foreground">TD Scorer</div>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-muted">
-                  <div className="text-2xl font-bold">
-                    {scoringSystem.correctPropBet}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Prop Bet</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
         </TabsContent>
 
         {/* Weekly Results */}
@@ -293,57 +294,62 @@ const Leaderboard = () => {
                       <span className="font-semibold">{week.winner.name}</span>
                       <Badge variant="default">Winner</Badge>
                     </div>
+                    <Button variant="ghost" size="sm" onClick={() => toggleWeekExpansion(week.week)}>
+                      {expandedWeek === week.week ? "Collapse" : "Expand"}
+                    </Button>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    {week.allResults.map((entry, index) => (
-                      <div
-                        key={entry.user.id}
-                        className="flex items-center justify-between p-3 rounded-lg border"
-                      >
-                        <div className="flex items-center gap-3">
-                          <Badge
-                            variant={index === 0 ? "default" : "outline"}
-                            className="min-w-8 justify-center"
-                          >
-                            #{index + 1}
-                          </Badge>
-                          <div>
-                            <div className="font-medium">{entry.user.name}</div>
-                            <div className="text-sm text-muted-foreground flex items-center gap-4">
-                              <span>
-                                {entry.result.correctPicks} correct picks
-                              </span>
-                              {entry.result.lockCorrect && (
-                                <Badge variant="outline" className="text-xs">
-                                  Lock ✓
-                                </Badge>
-                              )}
-                              {entry.result.tdScorerCorrect && (
-                                <Badge variant="outline" className="text-xs">
-                                  TD ✓
-                                </Badge>
-                              )}
-                              {entry.result.propBetCorrect && (
-                                <Badge variant="outline" className="text-xs">
-                                  Prop ✓
-                                </Badge>
-                              )}
+                  {expandedWeek === week.week && (
+                    <div className="space-y-3">
+                      {week.allResults.map((entry, index) => (
+                        <div
+                          key={entry.user.id}
+                          className="flex items-center justify-between p-3 rounded-lg border"
+                        >
+                          <div className="flex items-center gap-3">
+                            <Badge
+                              variant={index === 0 ? "default" : "outline"}
+                              className="min-w-8 justify-center"
+                            >
+                              #{index + 1}
+                            </Badge>
+                            <div>
+                              <div className="font-medium">{entry.user.name}</div>
+                              <div className="text-sm text-muted-foreground flex items-center gap-4">
+                                <span>
+                                  {entry.result.correctPicks} correct picks
+                                </span>
+                                {entry.result.lockCorrect && (
+                                  <Badge variant="outline" className="text-xs">
+                                    Lock ✓
+                                  </Badge>
+                                )}
+                                {entry.result.tdScorerCorrect && (
+                                  <Badge variant="outline" className="text-xs">
+                                    TD ✓
+                                  </Badge>
+                                )}
+                                {entry.result.propBetCorrect && (
+                                  <Badge variant="outline" className="text-xs">
+                                    Prop ✓
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xl font-bold">
+                              {entry.result.totalPoints}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              points
                             </div>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <div className="text-xl font-bold">
-                            {entry.result.totalPoints}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            points
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}
