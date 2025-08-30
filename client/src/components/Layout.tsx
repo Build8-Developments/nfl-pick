@@ -9,7 +9,6 @@ import {
   LogOut,
   Menu,
   X,
-  Eye,
 } from "lucide-react";
 import { useState } from "react";
 

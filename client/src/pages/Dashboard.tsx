@@ -41,21 +41,21 @@ const Dashboard = () => {
   const recentResults = weeklyResults.slice(0, 6);
 
   // Calculate next game time
-  const nextGame = currentWeekGames
-    .filter((game) => new Date(game.gameTime) > new Date())
-    .sort(
-      (a, b) => new Date(a.gameTime).getTime() - new Date(b.gameTime).getTime()
-    )[0];
+  // const nextGame = currentWeekGames
+  //   .filter((game) => new Date(game.gameTime) > new Date())
+  //   .sort(
+  //     (a, b) => new Date(a.gameTime).getTime() - new Date(b.gameTime).getTime()
+  //   )[0];
 
-  const formatGameTime = (gameTime: string) => {
-    return new Date(gameTime).toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  };
+  // const formatGameTime = (gameTime: string) => {
+  //   return new Date(gameTime).toLocaleDateString("en-US", {
+  //     weekday: "short",
+  //     month: "short",
+  //     day: "numeric",
+  //     hour: "numeric",
+  //     minute: "2-digit",
+  //   });
+  // };
 
   return (
     <div className="space-y-6">
