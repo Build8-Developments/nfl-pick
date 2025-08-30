@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/useAuth";
-import { useNavigate } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -12,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Select,
   SelectContent,
@@ -42,28 +40,30 @@ import {
   ChevronsUpDown,
   AlertTriangle,
   Save,
-  Eye,
 } from "lucide-react";
-import { currentWeekGames, nflPlayers, mockUserPicks } from "../data/mockData";
+import {
+  currentWeekGames,
+  nflPlayers,
+  mockUserPicks,
+  nflTeams,
+} from "../data/mockData";
 
 const Picks = () => {
   const { currentUser } = useAuth();
-  const navigate = useNavigate();
   const [picks, setPicks] = useState<Record<number, string>>({});
   const [lockOfWeek, setLockOfWeek] = useState("");
   const [touchdownScorer, setTouchdownScorer] = useState("");
   const [propBet, setPropBet] = useState("");
+  const [propBetOdds, setPropBetOdds] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [playerSearchOpen, setPlayerSearchOpen] = useState(false);
   const [playerSearchValue, setPlayerSearchValue] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
 
   const currentWeek = 10;
 
   // Load existing picks if user has already submitted
   useEffect(() => {
-    setIsLoading(true);
     const existingPicks = mockUserPicks.find(
       (pick) => pick.userId === currentUser?.id
     );
@@ -89,9 +89,10 @@ const Picks = () => {
       }
       if (existingPicks.propBet) {
         setPropBet(existingPicks.propBet.description);
+        // Note: odds field doesn't exist in current mock data, so we'll set empty string
+        setPropBetOdds("");
       }
     }
-    setIsLoading(false);
   }, [currentUser]);
 
   const handlePickChange = (gameId: number, team: string) => {
@@ -124,24 +125,6 @@ const Picks = () => {
     return new Date(gameTime) <= new Date();
   };
 
-  const getSpreadDisplay = (game: {
-    spread: number;
-    homeTeam: { abbreviation: string };
-    awayTeam: { abbreviation: string };
-  }) => {
-    const spread = Math.abs(game.spread);
-    const favoredTeam = game.spread < 0 ? game.homeTeam : game.awayTeam;
-    const underdogTeam = game.spread < 0 ? game.awayTeam : game.homeTeam;
-
-    return {
-      favoredTeam: favoredTeam.abbreviation,
-      underdogTeam: underdogTeam.abbreviation,
-      spread: spread,
-      favoredTeamFull: favoredTeam,
-      underdogTeamFull: underdogTeam,
-    };
-  };
-
   const canSubmit = () => {
     const requiredPicks = currentWeekGames.length;
     const submittedPicks = Object.keys(picks).length;
@@ -149,7 +132,8 @@ const Picks = () => {
       submittedPicks === requiredPicks &&
       lockOfWeek &&
       touchdownScorer &&
-      propBet.trim()
+      propBet.trim() &&
+      propBetOdds.trim()
     );
   };
 
@@ -171,49 +155,26 @@ const Picks = () => {
       player.team.toLowerCase().includes(playerSearchValue.toLowerCase())
   );
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-2 text-muted-foreground">Loading your picks...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
+          <h1 className="text-3xl font-bold text-foreground">
             Make Your Picks
           </h1>
           <p className="text-muted-foreground mt-1">
             Week {currentWeek} • {currentWeekGames.length} games
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate('/live-picks')}
-          >
-            <Eye className="h-4 w-4 mr-2" />
-            View Live Picks
-          </Button>
-          {hasSubmitted && (
-            <Alert>
-              <Check className="h-4 w-4" />
-              <AlertDescription>
-                Your picks for Week {currentWeek} have been submitted successfully.
-                You can still edit them until the first game starts.
-              </AlertDescription>
-            </Alert>
-          )}
-        </div>
+        {hasSubmitted && (
+          <Badge variant="default" className="text-sm">
+            Picks Submitted
+          </Badge>
+        )}
       </div>
+
+      {/* Spread Picks */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -225,22 +186,15 @@ const Picks = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {currentWeekGames.map((game) => {
-              const spreadInfo = getSpreadDisplay(
-                game as {
-                  spread: number;
-                  homeTeam: { abbreviation: string };
-                  awayTeam: { abbreviation: string };
-                }
-              );
               const gameStarted = isGameStarted(game.gameTime);
 
               return (
                 <div
                   key={game.id}
-                  className={`p-4 border rounded-lg ${
-                    gameStarted ? "bg-muted/50 cursor-not-allowed" : ""
+                  className={`p-4 border rounded-lg transition-all duration-200 hover:shadow-md ${
+                    gameStarted ? "bg-muted/50" : "hover:border-primary/50"
                   }`}
                 >
                   <div className="flex items-center justify-between mb-3">
@@ -248,7 +202,7 @@ const Picks = () => {
                       {formatGameTime(game.gameTime)}
                       {gameStarted && (
                         <Badge variant="secondary" className="ml-2 text-xs">
-                          Game Started
+                          Started
                         </Badge>
                       )}
                     </div>
@@ -258,16 +212,40 @@ const Picks = () => {
                   </div>
 
                   <div className="flex items-center justify-center">
-                    <div className="text-lg font-medium">
-                      {game.awayTeam?.abbreviation} @{" "}
-                      {game.homeTeam?.abbreviation}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {spreadInfo.favoredTeam} -{spreadInfo.spread}
+                    <div className="flex items-center gap-3 text-lg font-medium">
+                      <div
+                        className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
+                          picks[game.id] === game.awayTeam?.abbreviation
+                            ? "bg-muted"
+                            : ""
+                        }`}
+                      >
+                        <img
+                          src={game.awayTeam?.logoUrl}
+                          alt={`${game.awayTeam?.abbreviation} logo`}
+                          className="w-6 h-6 rounded-full"
+                        />
+                        <span>{game.awayTeam?.abbreviation}</span>
+                      </div>
+                      <span className="text-muted-foreground">@</span>
+                      <div
+                        className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
+                          picks[game.id] === game.homeTeam?.abbreviation
+                            ? "bg-muted"
+                            : ""
+                        }`}
+                      >
+                        <img
+                          src={game.homeTeam?.logoUrl}
+                          alt={`${game.homeTeam?.abbreviation} logo`}
+                          className="w-6 h-6 rounded-full"
+                        />
+                        <span>{game.homeTeam?.abbreviation}</span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row gap-2 mt-3">
+                  <div className="flex gap-2 mt-3">
                     <Button
                       variant={
                         picks[game.id] === game.awayTeam?.abbreviation
@@ -275,7 +253,7 @@ const Picks = () => {
                           : "outline"
                       }
                       size="sm"
-                      className="flex-1"
+                      className="flex-1 h-auto p-2 transition-all duration-200"
                       onClick={() =>
                         handlePickChange(
                           game.id,
@@ -283,8 +261,54 @@ const Picks = () => {
                         )
                       }
                       disabled={gameStarted}
+                      style={{
+                        backgroundColor:
+                          picks[game.id] === game.awayTeam?.abbreviation
+                            ? "#22c55e"
+                            : undefined,
+                        borderColor: game.awayTeam?.primaryColor,
+                        color:
+                          picks[game.id] === game.awayTeam?.abbreviation
+                            ? "#ffffff"
+                            : game.awayTeam?.primaryColor,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (
+                          !gameStarted &&
+                          picks[game.id] !== game.awayTeam?.abbreviation
+                        ) {
+                          e.currentTarget.style.backgroundColor =
+                            game.awayTeam?.primaryColor + "20";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (
+                          !gameStarted &&
+                          picks[game.id] !== game.awayTeam?.abbreviation
+                        ) {
+                          e.currentTarget.style.backgroundColor = "";
+                        }
+                      }}
                     >
-                      {game.awayTeam?.abbreviation} {game.spread > 0 ? `+${Math.abs(game.spread)}` : ``}
+                      <div className="flex flex-col items-center gap-1">
+                        <img
+                          src={game.awayTeam?.logoUrl}
+                          alt={`${game.awayTeam?.abbreviation} logo`}
+                          className="w-6 h-6 rounded-full"
+                        />
+                        <div className="text-center">
+                          <div className="font-semibold text-sm">
+                            {game.awayTeam?.abbreviation}
+                          </div>
+                          <div className="text-xs opacity-80">
+                            {game.spread > 0
+                              ? `+${game.spread}`
+                              : game.spread < 0
+                              ? `${game.spread}`
+                              : "PK"}
+                          </div>
+                        </div>
+                      </div>
                     </Button>
                     <Button
                       variant={
@@ -293,7 +317,7 @@ const Picks = () => {
                           : "outline"
                       }
                       size="sm"
-                      className="flex-1"
+                      className="flex-1 h-auto p-2 transition-all duration-200"
                       onClick={() =>
                         handlePickChange(
                           game.id,
@@ -301,8 +325,54 @@ const Picks = () => {
                         )
                       }
                       disabled={gameStarted}
+                      style={{
+                        backgroundColor:
+                          picks[game.id] === game.homeTeam?.abbreviation
+                            ? "#22c55e"
+                            : undefined,
+                        borderColor: game.homeTeam?.primaryColor,
+                        color:
+                          picks[game.id] === game.homeTeam?.abbreviation
+                            ? "#ffffff"
+                            : game.homeTeam?.primaryColor,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (
+                          !gameStarted &&
+                          picks[game.id] !== game.homeTeam?.abbreviation
+                        ) {
+                          e.currentTarget.style.backgroundColor =
+                            game.homeTeam?.primaryColor + "20";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (
+                          !gameStarted &&
+                          picks[game.id] !== game.homeTeam?.abbreviation
+                        ) {
+                          e.currentTarget.style.backgroundColor = "";
+                        }
+                      }}
                     >
-                      {game.homeTeam?.abbreviation} {game.spread < 0 ? `+${Math.abs(game.spread)}` : ``}
+                      <div className="flex flex-col items-center gap-1">
+                        <img
+                          src={game.homeTeam?.logoUrl}
+                          alt={`${game.homeTeam?.abbreviation} logo`}
+                          className="w-6 h-6 rounded-full"
+                        />
+                        <div className="text-center">
+                          <div className="font-semibold text-sm">
+                            {game.homeTeam?.abbreviation}
+                          </div>
+                          <div className="text-xs opacity-80">
+                            {game.spread < 0
+                              ? `+${Math.abs(game.spread)}`
+                              : game.spread > 0
+                              ? `${game.spread}`
+                              : "PK"}
+                          </div>
+                        </div>
+                      </div>
                     </Button>
                   </div>
                 </div>
@@ -312,105 +382,131 @@ const Picks = () => {
         </CardContent>
       </Card>
 
-      {/* Lock of the Week */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Lock className="h-5 w-5" />
-            Lock of the Week
-          </CardTitle>
-          <CardDescription>
-            Choose your most confident pick for double points
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Select value={lockOfWeek} onValueChange={setLockOfWeek}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select your lock of the week" />
-            </SelectTrigger>
-            <SelectContent>
-              {currentWeekGames.map((game) => {
-                const userPick = picks[game.id];
-                if (!userPick) return null;
+      {/* Lock of the Week and Touchdown Scorer */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Lock of the Week */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Lock className="h-5 w-5" />
+              Lock of the Week
+            </CardTitle>
+            <CardDescription>
+              Choose your most confident pick for double points
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Select value={lockOfWeek} onValueChange={setLockOfWeek}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select your lock of the week" />
+              </SelectTrigger>
+              <SelectContent>
+                {currentWeekGames.map((game) => {
+                  const userPick = picks[game.id];
+                  if (!userPick) return null;
 
-                return (
-                  <SelectItem key={game.id} value={`${game.id}-${userPick}`}>
-                    {userPick}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
-        </CardContent>
-      </Card>
+                  const selectedTeam =
+                    game.awayTeam?.abbreviation === userPick
+                      ? game.awayTeam
+                      : game.homeTeam;
 
-      {/* Touchdown Scorer */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5" />
-            Touchdown Scorer
-          </CardTitle>
-          <CardDescription>
-            Pick a player to score a touchdown this week
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Popover open={playerSearchOpen} onOpenChange={setPlayerSearchOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                role="combobox"
-                aria-expanded={playerSearchOpen}
-                className="w-full justify-between"
-              >
-                {playerSearchValue || "Search for a player..."}
-                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-full p-0">
-              <Command>
-                <CommandInput
-                  placeholder="Search players..."
-                  value={playerSearchValue}
-                  onValueChange={setPlayerSearchValue}
-                />
-                <CommandList>
-                  <CommandEmpty>No players found.</CommandEmpty>
-                  <CommandGroup>
-                    {filteredPlayers.map((player) => (
-                      <CommandItem
-                        key={player.id}
-                        value={player.name}
-                        onSelect={() =>
-                          handleTouchdownScorerSelect(
-                            player.id,
-                            player.name as string
-                          )
-                        }
-                      >
-                        <Check
-                          className={`mr-2 h-4 w-4 ${
-                            touchdownScorer === player.id.toString()
-                              ? "opacity-100"
-                              : "opacity-0"
-                          }`}
+                  return (
+                    <SelectItem key={game.id} value={`${game.id}-${userPick}`}>
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={selectedTeam?.logoUrl}
+                          alt={`${selectedTeam?.abbreviation} logo`}
+                          className="w-4 h-4 rounded-full"
                         />
-                        <div className="flex items-center justify-between w-full">
-                          <span>{player.name}</span>
-                          <div className="text-xs text-muted-foreground">
-                            {player.team} • {player.position}
-                          </div>
-                        </div>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
-        </CardContent>
-      </Card>
+                        <span>{game.homeTeam?.abbreviation}</span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+
+        {/* Touchdown Scorer */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Touchdown Scorer
+            </CardTitle>
+            <CardDescription>
+              Pick a player to score a touchdown this week
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Popover open={playerSearchOpen} onOpenChange={setPlayerSearchOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={playerSearchOpen}
+                  className="w-full justify-between"
+                >
+                  {playerSearchValue || "Search for a player..."}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0">
+                <Command>
+                  <CommandInput
+                    placeholder="Search players..."
+                    value={playerSearchValue}
+                    onValueChange={setPlayerSearchValue}
+                  />
+                  <CommandList>
+                    <CommandEmpty>No players found.</CommandEmpty>
+                    <CommandGroup>
+                      {filteredPlayers.slice(0, 10).map((player) => {
+                        const playerTeam = nflTeams.find(
+                          (team) => team.abbreviation === player.team
+                        );
+                        return (
+                          <CommandItem
+                            key={player.id}
+                            value={player.name}
+                            onSelect={() =>
+                              handleTouchdownScorerSelect(
+                                player.id,
+                                player.name as string
+                              )
+                            }
+                          >
+                            <Check
+                              className={`mr-2 h-4 w-4 ${
+                                touchdownScorer === player.id.toString()
+                                  ? "opacity-100"
+                                  : "opacity-0"
+                              }`}
+                            />
+                            <div className="flex items-center justify-start w-full">
+                              <div className="flex items-center gap-2">
+                                {playerTeam && (
+                                  <img
+                                    src={playerTeam.logoUrl}
+                                    alt={`${playerTeam.abbreviation} logo`}
+                                    className="w-5 h-5 rounded-full"
+                                  />
+                                )}
+                                <span className="text-sm">{player.name}</span>
+                              </div>
+                            </div>
+                          </CommandItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Prop Bet */}
       <Card>
@@ -420,7 +516,7 @@ const Picks = () => {
             Prop Bet
           </CardTitle>
           <CardDescription>
-            Submit your prop bet
+            Submit a prop bet for admin approval
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -434,13 +530,18 @@ const Picks = () => {
                 setPropBet(e.target.value)
               }
             />
-            <Label htmlFor="propBetOdds">Odds</Label>
+            <Label htmlFor="propBetOdds">Prop Bet Odds</Label>
             <Input
               id="propBetOdds"
-              placeholder="e.g., -190"
+              placeholder="e.g., +190"
+              value={propBetOdds}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setPropBetOdds(e.target.value)
+              }
             />
             <p className="text-xs text-muted-foreground">
-              Describe your prop bet clearly. Admin will approve or reject it.
+              Describe your prop bet clearly and provide the odds (e.g., +190,
+              -150).
             </p>
           </div>
         </CardContent>
@@ -482,7 +583,9 @@ const Picks = () => {
               <div
                 className="bg-primary h-2 rounded-full transition-all duration-300"
                 style={{
-                  width: `${(Object.keys(picks).length / currentWeekGames.length) * 100}%`,
+                  width: `${
+                    (Object.keys(picks).length / currentWeekGames.length) * 100
+                  }%`,
                 }}
               ></div>
             </div>
@@ -492,7 +595,9 @@ const Picks = () => {
               </span>
               <span>Lock of week: {lockOfWeek ? "✓" : "○"}</span>
               <span>TD scorer: {touchdownScorer ? "✓" : "○"}</span>
-              <span>Prop bet: {propBet.trim() ? "✓" : "○"}</span>
+              <span>
+                Prop bet: {propBet.trim() && propBetOdds.trim() ? "✓" : "○"}
+              </span>
             </div>
           </div>
         </CardContent>

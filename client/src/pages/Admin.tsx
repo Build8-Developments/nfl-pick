@@ -60,16 +60,12 @@ const Admin = () => {
     );
   }
 
-
-
   const handlePropBetAction = (propBetId: number, action: string) => {
     setPropBetActions((prev) => ({
       ...prev,
       [propBetId]: action,
     }));
   };
-
-
 
   const savePropBetActions = async () => {
     setIsUpdating(true);
@@ -193,9 +189,6 @@ const Admin = () => {
                 <Trophy className="h-5 w-5" />
                 Week {selectedWeek} Game Results
               </CardTitle>
-              <CardDescription>
-                Set winners for each game to calculate player scores
-              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -233,18 +226,10 @@ const Admin = () => {
                             : "Scheduled"}
                         </Badge>
                       </div>
-
-                      <div className="flex gap-2">
-                        <Badge variant="default" className="self-center">
-                          Results pulled from API
-                        </Badge>
-                      </div>
                     </div>
                   );
                 })}
               </div>
-
-
             </CardContent>
           </Card>
         </TabsContent>

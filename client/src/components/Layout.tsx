@@ -27,7 +27,6 @@ const Layout = () => {
   const navigation = [
     { name: "Dashboard", href: "/", icon: Home },
     { name: "Make Picks", href: "/picks", icon: FileText },
-    { name: "Live Picks", href: "/live-picks", icon: Eye },
     { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
     ...(currentUser?.isAdmin
       ? [{ name: "Admin", href: "/admin", icon: Settings }]

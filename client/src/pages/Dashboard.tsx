@@ -16,10 +16,10 @@ import {
   TrendingUp,
   Clock,
   Users,
+  Check,
+  X,
 } from "lucide-react";
-import {
-  Tabs, TabsContent, TabsList, TabsTrigger
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import {
   users,
   currentWeekGames,
@@ -38,7 +38,7 @@ const Dashboard = () => {
   const hasSubmittedPicks = userPicks && userPicks.isFinalized;
 
   // Get recent results
-  const recentResults = weeklyResults.slice(0, 3);
+  const recentResults = weeklyResults.slice(0, 6);
 
   // Calculate next game time
   const nextGame = currentWeekGames
@@ -128,41 +128,60 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Week {currentWeek} Status
+            <CardTitle className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                Week {currentWeek} Status
+              </div>
+              {hasSubmittedPicks && (
+                <div className="flex items-center justify-end">
+                  <Badge variant="default">Submitted</Badge>
+                </div>
+              )}
             </CardTitle>
+
             <CardDescription>Your picks for this week</CardDescription>
             {userPicks && !userPicks.isFinalized && (
               <div className="pt-2 text-sm text-muted-foreground">
-                <p>Picks are in progress. Time remaining to submit: 2d 4h 15m</p>
+                <p>
+                  Picks are in progress. Time remaining to submit: 2d 4h 15m
+                </p>
               </div>
             )}
-
           </CardHeader>
           <CardContent>
             {hasSubmittedPicks ? (
               <div className="space-y-4">
-                <div className="flex items-center justify-end">
-                  <Badge variant="default">Submitted</Badge>
-                </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span>Spread Picks:</span>
-                    <span>{userPicks.picks.length} / {currentWeekGames.length} games</span>
+                    <span>
+                      {userPicks.picks.length} / {currentWeekGames.length} games
+                      submitted
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span>Lock of Week:</span>
-                    <span>{userPicks.lockOfWeek.selectedTeam}</span>
+                    <span>
+                      {userPicks.lockOfWeek.selectedTeam
+                        ? userPicks.lockOfWeek.selectedTeam
+                        : "Not submitted"}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span>TD Scorer:</span>
-                    <span>{userPicks.touchdownScorer.playerName}</span>
+                    <span>
+                      {userPicks.touchdownScorer.playerName
+                        ? userPicks.touchdownScorer.playerName
+                        : "Not submitted"}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span>Prop Bet:</span>
                     <Badge variant="outline" className="text-xs">
-                      {userPicks.propBet.status}
+                      {userPicks.propBet.status
+                        ? userPicks.propBet.status
+                        : "Not submitted"}
                     </Badge>
                   </div>
                 </div>
@@ -175,53 +194,12 @@ const Dashboard = () => {
                 <div className="text-muted-foreground">
                   <Clock className="h-8 w-8 mx-auto mb-2" />
                   <p>
-                    You haven\'t submitted your picks for Week {currentWeek} yet.
+                    You haven't submitted your picks for Week {currentWeek} yet.
                   </p>
                 </div>
                 <Button asChild className="w-full">
                   <Link to="/picks">Make Your Picks</Link>
                 </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Next Game
-            </CardTitle>
-            <CardDescription>Upcoming game information</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {nextGame ? (
-              <div className="space-y-3">
-                <div className="text-center">
-                  <div className="text-lg font-semibold">
-                    {nextGame.awayTeam?.abbreviation} @{" "}
-                    {nextGame.homeTeam?.abbreviation}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {nextGame.homeTeam?.name}{" "}
-                    {nextGame.spread && nextGame.spread > 0 ? "+" : ""}
-                    {nextGame.spread}
-                  </div>
-                </div>
-                <div className="text-center">
-                  <div className="text-sm font-medium">
-                    {formatGameTime(nextGame.gameTime)}
-                  </div>
-                </div>
-                <div className="pt-2 border-t">
-                  <div className="text-xs text-muted-foreground text-center">
-                    Make sure to submit your picks before kickoff!
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center text-muted-foreground">
-                <p>No upcoming games this week</p>
               </div>
             )}
           </CardContent>
@@ -239,18 +217,60 @@ const Dashboard = () => {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="all" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="second">Second</TabsTrigger>
-              <TabsTrigger value="loser">Loser</TabsTrigger>
-            </TabsList>
             <TabsContent value="all">
               <div className="space-y-4">
                 {recentResults.map((result) => {
                   const userResult = result.results.find(
                     (r) => r.userId === currentUser?.id
                   );
-                  const isWinner = result.winner.id === currentUser?.id;
+
+                  // Sort results by total points to determine user's position
+                  const sortedResults = [...result.results].sort(
+                    (a, b) => b.totalPoints - a.totalPoints
+                  );
+                  const userRank = sortedResults.findIndex(
+                    (r) => r.userId === currentUser?.id
+                  );
+
+                  // Determine position and badge variant
+                  let positionBadge = null;
+                  if (userRank === 0) {
+                    positionBadge = (
+                      <Badge
+                        variant="default"
+                        className="text-xs bg-green-700 text-white"
+                      >
+                        Winner
+                      </Badge>
+                    );
+                  } else if (userRank === 1) {
+                    positionBadge = (
+                      <Badge
+                        variant="secondary"
+                        className="text-xs bg-amber-700 text-white"
+                      >
+                        Second
+                      </Badge>
+                    );
+                  } else if (userRank === sortedResults.length - 1) {
+                    positionBadge = (
+                      <Badge
+                        variant="destructive"
+                        className="text-xs bg-red-700 text-white"
+                      >
+                        Loser
+                      </Badge>
+                    );
+                  } else {
+                    positionBadge = (
+                      <Badge
+                        variant="outline"
+                        className="text-xs bg-gray-700 text-white"
+                      >
+                        #{userRank + 1}
+                      </Badge>
+                    );
+                  }
 
                   return (
                     <div
@@ -261,18 +281,53 @@ const Dashboard = () => {
                         <div className="text-sm font-medium">
                           Week {result.week}
                         </div>
-                        {isWinner && (
-                          <Badge variant="default" className="text-xs">
-                            Winner
-                          </Badge>
-                        )}
+                        {positionBadge}
                       </div>
                       <div className="text-right">
                         <div className="text-sm font-medium">
                           {userResult?.totalPoints} points
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {userResult?.correctPicks} correct picks
+                          {userResult?.correctPicks} correct picks /{" "}
+                          {currentWeekGames.length} total
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-muted-foreground">
+                            Lock
+                          </span>
+                          {userResult?.lockCorrect ? (
+                            <span className="text-xs text-green-600">
+                              <Check />
+                            </span>
+                          ) : (
+                            <span className="text-xs text-red-600">
+                              <X />
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            TD
+                          </span>
+                          {userResult?.tdScorerCorrect ? (
+                            <span className="text-xs text-green-600">
+                              <Check />
+                            </span>
+                          ) : (
+                            <span className="text-xs text-red-600">
+                              <X />
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            Prop
+                          </span>
+                          {userResult?.propBetCorrect ? (
+                            <span className="text-green-600">
+                              <Check />
+                            </span>
+                          ) : (
+                            <span className="text-red-600">
+                              <X />
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -281,13 +336,215 @@ const Dashboard = () => {
               </div>
             </TabsContent>
             <TabsContent value="second">
-              <div className="text-center text-muted-foreground py-8">
-                <p>Content for 'Second' tab will go here.</p>
+              <div className="space-y-4">
+                {recentResults
+                  .map((result) => {
+                    // Sort results by total points to find second place
+                    const sortedResults = [...result.results].sort(
+                      (a, b) => b.totalPoints - a.totalPoints
+                    );
+                    const secondPlace = sortedResults[1]; // Second place (index 1)
+                    const isSecondPlace =
+                      secondPlace && secondPlace.userId === currentUser?.id;
+
+                    // Only show weeks where current user is second place
+                    if (!isSecondPlace) return null;
+
+                    return {
+                      week: result.week,
+                      result: secondPlace,
+                      isSecondPlace: true,
+                    };
+                  })
+                  .filter(
+                    (item): item is NonNullable<typeof item> => item !== null
+                  ) // Remove null entries
+                  .map((item) => (
+                    <div
+                      key={item.week}
+                      className="flex items-center justify-between p-3 rounded-lg border"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="text-sm font-medium">
+                          Week {item.week}
+                        </div>
+                        <Badge
+                          variant="secondary"
+                          className="text-xs bg-amber-700 text-white"
+                        >
+                          Second
+                        </Badge>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-medium">
+                          {item.result.totalPoints} points
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {item.result.correctPicks} correct picks /{" "}
+                          {currentWeekGames.length} total
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-muted-foreground">
+                            Lock
+                          </span>
+                          {item.result.lockCorrect ? (
+                            <span className="text-xs text-green-600">
+                              <Check />
+                            </span>
+                          ) : (
+                            <span className="text-xs text-red-600">
+                              <X />
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            TD
+                          </span>
+                          {item.result.tdScorerCorrect ? (
+                            <span className="text-xs text-green-600">
+                              <Check />
+                            </span>
+                          ) : (
+                            <span className="text-xs text-red-600">
+                              <X />
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            Prop
+                          </span>
+                          {item.result.propBetCorrect ? (
+                            <span className="text-xs text-green-600">
+                              <Check />
+                            </span>
+                          ) : (
+                            <span className="text-xs text-red-600">
+                              <X />
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                {recentResults
+                  .map((result) => {
+                    const sortedResults = [...result.results].sort(
+                      (a, b) => b.totalPoints - a.totalPoints
+                    );
+                    const secondPlace = sortedResults[1];
+                    const isSecondPlace =
+                      secondPlace && secondPlace.userId === currentUser?.id;
+                    return isSecondPlace;
+                  })
+                  .filter(Boolean).length === 0 && (
+                  <div className="text-center text-muted-foreground py-8">
+                    <p>You haven't finished in second in recent weeks.</p>
+                  </div>
+                )}
               </div>
             </TabsContent>
             <TabsContent value="loser">
-              <div className="text-center text-muted-foreground py-8">
-                <p>Content for 'Loser' tab will go here.</p>
+              <div className="space-y-4">
+                {recentResults
+                  .map((result) => {
+                    // Sort results by total points to find last place
+                    const sortedResults = [...result.results].sort(
+                      (a, b) => b.totalPoints - a.totalPoints
+                    );
+                    const lastPlace = sortedResults[sortedResults.length - 1]; // Last place
+                    const isLastPlace =
+                      lastPlace && lastPlace.userId === currentUser?.id;
+
+                    // Only show weeks where current user is last place
+                    if (!isLastPlace) return null;
+
+                    return {
+                      week: result.week,
+                      result: lastPlace,
+                      isLastPlace: true,
+                    };
+                  })
+                  .filter(
+                    (item): item is NonNullable<typeof item> => item !== null
+                  ) // Remove null entries
+                  .map((item) => (
+                    <div
+                      key={item.week}
+                      className="flex items-center justify-between p-3 rounded-lg border"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="text-sm font-medium">
+                          Week {item.week}
+                        </div>
+                        <Badge
+                          variant="destructive"
+                          className="text-xs bg-red-700 text-white"
+                        >
+                          Loser
+                        </Badge>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-medium">
+                          {item.result.totalPoints} points
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {item.result.correctPicks} correct picks /{" "}
+                          {currentWeekGames.length} total
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-muted-foreground">
+                            Lock
+                          </span>
+                          {item.result.lockCorrect ? (
+                            <span className="text-xs text-green-600">
+                              <Check />
+                            </span>
+                          ) : (
+                            <span className="text-xs text-red-600">
+                              <X />
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            TD
+                          </span>
+                          {item.result.tdScorerCorrect ? (
+                            <span className="text-xs text-green-600">
+                              <Check />
+                            </span>
+                          ) : (
+                            <span className="text-xs text-red-600">
+                              <X />
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            Prop
+                          </span>
+                          {item.result.propBetCorrect ? (
+                            <span className="text-xs text-green-600">
+                              <Check />
+                            </span>
+                          ) : (
+                            <span className="text-xs text-red-600">
+                              <X />
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                {recentResults
+                  .map((result) => {
+                    const sortedResults = [...result.results].sort(
+                      (a, b) => b.totalPoints - a.totalPoints
+                    );
+                    const lastPlace = sortedResults[sortedResults.length - 1];
+                    const isLastPlace =
+                      lastPlace && lastPlace.userId === currentUser?.id;
+                    return isLastPlace;
+                  })
+                  .filter(Boolean).length === 0 && (
+                  <div className="text-center text-muted-foreground py-8">
+                    <p>You haven't finished in loser in recent weeks.</p>
+                  </div>
+                )}
               </div>
             </TabsContent>
           </Tabs>
