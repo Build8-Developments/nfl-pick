@@ -22,7 +22,7 @@ const resolveBaseUrl = (override?: string) => {
   const env = import.meta.env.MODE || process.env.NODE_ENV || "development";
   // Per requirement: use http://localhost:3000/api/v1/ for both dev and prod for now
   const devUrl = "http://localhost:3000/api/v1/";
-  const prodUrl = "http://localhost:3000/api/v1/";
+  const prodUrl = "https://api.blockhaven.net/api/v1/";
   return ensureTrailingSlash(env === "development" ? devUrl : prodUrl);
 };
 
