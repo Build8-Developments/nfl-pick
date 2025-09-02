@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import User, { type IUser } from "../users/user.model.js";
-import { ApiResponse } from "../../utils/apiResponse.js";
+import { ApiResponse } from "../../utils/ApiResponse.js";
 import bcrypt from "bcryptjs";
 import { generateToken } from "../../config/jwt.js";
 import type { IUserLogin } from "../../types/user/User.js";

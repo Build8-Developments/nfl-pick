@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ApiResponse } from "../../utils/apiResponse.js";
+import { ApiResponse } from "../../utils/ApiResponse.js";
 import type { NextFunction, Request, Response } from "express";
 
 const loginSchema = z.object({
