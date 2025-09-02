@@ -11,7 +11,10 @@ import { PORT, NODE_ENV, MONGODB_URI } from "./src/config/environment.js";
 import errorHandler from "./src/middlewares/errorHandler.middleware.js";
 import morgan from "morgan";
 import cron from "node-cron";
-import { syncWeekGames } from "./src/modules/sync/sync.service.js";
+import {
+  syncWeekGames,
+  syncAllPlayers,
+} from "./src/modules/sync/sync.service.js";
 
 const server = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -78,6 +81,9 @@ server.use(errorHandler);
           console.log(
             `[Scheduler] Synced NFL games for week ${week}, season ${season}`
           );
+
+          await syncAllPlayers();
+          console.log("[Scheduler] Synced NFL players");
         } catch (err) {
           console.error("[Scheduler] Failed monthly sync:", err);
         }

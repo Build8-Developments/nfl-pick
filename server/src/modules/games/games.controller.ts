@@ -4,7 +4,6 @@ import {
   getAllGames,
   getGameById as getGameByIdService,
 } from "./games.service.js";
-import { syncWeekGames } from "../sync/sync.service.js";
 
 export const getGames = async (req: Request, res: Response) => {
   const games = await getAllGames();

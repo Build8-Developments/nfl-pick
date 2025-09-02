@@ -1,4 +1,4 @@
-import { getNFLGamesForWeek } from "../../api/nfl.js";
+import { getNFLPlayers, getNFLGamesForWeek } from "../../api/nfl.js";
 import type { IGame } from "../games/games.model.js";
 import { insertGames } from "../games/games.service.js";
 
@@ -108,8 +108,6 @@ const syncWeekGames = async (week?: number, season?: number) => {
   }
 };
 
-export { syncWeekGames };
-
 // Sync all weeks for a season (1-18)
 export const syncSeasonGames = async (season?: number) => {
   const targetSeason = season ?? getCurrentSeason();
@@ -134,3 +132,12 @@ export const syncSeasonGames = async (season?: number) => {
     },
   };
 };
+
+// sybnc all players
+export const syncAllPlayers = async () => {
+  const players = await getNFLPlayers();
+  console.log(players);
+  return players;
+};
+
+export { syncWeekGames };

@@ -6,6 +6,7 @@ import { ApiResponse } from "./utils/ApiResponse.js";
 import authRouter from "./modules/auth/auth.route.js";
 import syncRouter from "./modules/sync/sync.route.js";
 import gamesRouter from "./modules/games/games.route.js";
+import playersRouter from "./modules/players/players.route.js";
 const app = express.Router();
 
 app.get("/health", protectAdmin, (req: Request, res: Response) => {
@@ -28,6 +29,9 @@ app.use("/sync", syncRouter);
 
 // Games
 app.use("/games", gamesRouter);
+
+// Players
+app.use("/players", playersRouter);
 
 app.use((req: Request, res: Response) => {
   res.status(404).json(ApiResponse.error(`Route ${req.originalUrl} not found`));

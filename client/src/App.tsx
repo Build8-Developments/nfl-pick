@@ -14,6 +14,7 @@ import Leaderboard from "./pages/Leaderboard.tsx";
 import Admin from "./pages/Admin.tsx";
 import LivePicks from "./pages/LivePicks.tsx";
 import "./App.css";
+import ApiExample from "./components/ApiExample.tsx";
 
 // Protected Route component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -52,6 +53,8 @@ function App() {
             <Route path="leaderboard" element={<Leaderboard />} />
             <Route path="admin" element={<Admin />} />
             <Route path="live-picks" element={<LivePicks />} />
+            {/* Example usage of centralized API client */}
+            <Route path="api-example" element={<ApiExample />} />
           </Route>
         </Routes>
       </Router>

@@ -21,4 +21,15 @@ const getNFLGamesForWeek = async (week: number, season: number) => {
   return data;
 };
 
-export { getNFLGamesForWeek };
+const getNFLPlayers = async () => {
+  const res = await fetch(`https://${RAPIDAPI_HOST}/getNFLPlayerList`, {
+    headers: {
+      "x-rapidapi-key": RAPIDAPI_KEY,
+      "x-rapidapi-host": RAPIDAPI_HOST,
+    },
+  });
+  const data = await res.json();
+  return data;
+};
+
+export { getNFLGamesForWeek, getNFLPlayers };

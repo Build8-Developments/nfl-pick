@@ -41,12 +41,9 @@ import {
   AlertTriangle,
   Save,
 } from "lucide-react";
-import {
-  currentWeekGames,
-  nflPlayers,
-  mockUserPicks,
-  nflTeams,
-} from "../data/mockData";
+import { currentWeekGames, mockUserPicks } from "../data/mockData";
+import { apiClient } from "@/lib/api";
+import type { IPlayer } from "@/types/player.type";
 
 const Picks = () => {
   const { currentUser } = useAuth();
@@ -59,6 +56,10 @@ const Picks = () => {
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [playerSearchOpen, setPlayerSearchOpen] = useState(false);
   const [playerSearchValue, setPlayerSearchValue] = useState("");
+  const [players, setPlayers] = useState<IPlayer[]>([]);
+  // Track loading and error if needed for UI; currently not displayed
+  const [, setPlayersLoading] = useState(false);
+  const [, setPlayersError] = useState<string | null>(null);
 
   const currentWeek = 10;
 
@@ -103,10 +104,10 @@ const Picks = () => {
   };
 
   const handleTouchdownScorerSelect = (
-    playerId: number,
+    playerId: string,
     playerName: string
   ) => {
-    setTouchdownScorer(playerId.toString());
+    setTouchdownScorer(playerId);
     setPlayerSearchValue(playerName);
     setPlayerSearchOpen(false);
   };
@@ -149,11 +150,41 @@ const Picks = () => {
     setIsSubmitting(false);
   };
 
-  const filteredPlayers = nflPlayers.filter(
-    (player) =>
-      player.name.toLowerCase().includes(playerSearchValue.toLowerCase()) ||
-      player.team.toLowerCase().includes(playerSearchValue.toLowerCase())
-  );
+  // Fetch players from API with debounce; backend paginates to 20 per page and supports search
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const q = playerSearchValue.trim();
+    setPlayersLoading(true);
+    setPlayersError(null);
+    const t = setTimeout(() => {
+      apiClient
+        .get<{ success: boolean; data?: { items: IPlayer[] } }>("players", {
+          query: q ? { search: q } : undefined,
+        })
+        .then((res) => {
+          if (!active) return;
+          const list = Array.isArray(res.data?.items) ? res.data.items! : [];
+          setPlayers(list);
+        })
+        .catch((err: unknown) => {
+          if (!active) return;
+          const msg =
+            err instanceof Error ? err.message : "Failed to load players";
+          setPlayersError(msg);
+          setPlayers([]);
+        })
+        .finally(() => {
+          if (!active) return;
+          setPlayersLoading(false);
+        });
+    }, 300);
+    return () => {
+      active = false;
+      clearTimeout(t);
+      controller.abort();
+    };
+  }, [playerSearchValue]);
 
   return (
     <div className="space-y-6">
@@ -462,38 +493,44 @@ const Picks = () => {
                   <CommandList>
                     <CommandEmpty>No players found.</CommandEmpty>
                     <CommandGroup>
-                      {filteredPlayers.slice(0, 10).map((player) => {
-                        const playerTeam = nflTeams.find(
-                          (team) => team.abbreviation === player.team
-                        );
+                      {players.slice(0, 20).map((player) => {
                         return (
                           <CommandItem
-                            key={player.id}
-                            value={player.name}
+                            key={player.playerID}
+                            value={player.longName}
+                            className="flex justify-between items-center"
                             onSelect={() =>
                               handleTouchdownScorerSelect(
-                                player.id,
-                                player.name as string
+                                player.playerID,
+                                player.longName as string
                               )
                             }
                           >
                             <Check
                               className={`mr-2 h-4 w-4 ${
-                                touchdownScorer === player.id.toString()
+                                touchdownScorer === String(player.playerID)
                                   ? "opacity-100"
                                   : "opacity-0"
                               }`}
                             />
                             <div className="flex items-center justify-start w-full">
-                              <div className="flex items-center gap-2">
-                                {playerTeam && (
+                              <div className="flex justify-start items-center w-full gap-2">
+                                {player.espnHeadshot && (
                                   <img
-                                    src={playerTeam.logoUrl}
-                                    alt={`${playerTeam.abbreviation} logo`}
-                                    className="w-5 h-5 rounded-full"
+                                    src={player.espnHeadshot}
+                                    alt={`${player.longName} headshot`}
+                                    className="w-5 h-5 rounded-full object-cover"
                                   />
                                 )}
-                                <span className="text-sm">{player.name}</span>
+
+                                <span className="text-sm w-full">
+                                  {player.longName}
+                                </span>
+
+                                <div className="flex gap-2 font-medium w-[20%] justify-end">
+                                  <span className="text-sm">{player.team}</span>
+                                  <span className="text-sm">{player.pos}</span>
+                                </div>
                               </div>
                             </div>
                           </CommandItem>
