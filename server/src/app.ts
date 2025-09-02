@@ -7,6 +7,9 @@ import authRouter from "./modules/auth/auth.route.js";
 import syncRouter from "./modules/sync/sync.route.js";
 import gamesRouter from "./modules/games/games.route.js";
 import playersRouter from "./modules/players/players.route.js";
+import bettingOddsRouter from "./modules/betting-odds/bettingOdds.routes.js";
+import teamRouter from "./modules/teams/team.route.js";
+
 const app = express.Router();
 
 app.get("/health", protectAdmin, (req: Request, res: Response) => {
@@ -32,6 +35,12 @@ app.use("/games", gamesRouter);
 
 // Players
 app.use("/players", playersRouter);
+
+// Betting Odds
+app.use("/betting-odds", bettingOddsRouter);
+
+// Teams
+app.use("/teams", teamRouter);
 
 app.use((req: Request, res: Response) => {
   res.status(404).json(ApiResponse.error(`Route ${req.originalUrl} not found`));

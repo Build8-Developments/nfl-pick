@@ -41,9 +41,12 @@ import {
   AlertTriangle,
   Save,
 } from "lucide-react";
-import { currentWeekGames, mockUserPicks } from "../data/mockData";
+// Replace mock data with real API data
 import { apiClient } from "@/lib/api";
 import type { IPlayer } from "@/types/player.type";
+import type { IGame } from "@/types/game.type";
+import type { ITeam } from "@/types/team.type";
+import { memCache } from "@/lib/memCache";
 
 const Picks = () => {
   const { currentUser } = useAuth();
@@ -57,44 +60,164 @@ const Picks = () => {
   const [playerSearchOpen, setPlayerSearchOpen] = useState(false);
   const [playerSearchValue, setPlayerSearchValue] = useState("");
   const [players, setPlayers] = useState<IPlayer[]>([]);
+  const [teams, setTeams] = useState<ITeam[]>([]);
+  const [games, setGames] = useState<IGame[]>([]);
+  const [currentWeek, setCurrentWeek] = useState<number | null>(null);
+  const [oddsByGameId, setOddsByGameId] = useState<
+    Record<string, { awayTeamSpread?: string; homeTeamSpread?: string }>
+  >({});
   // Track loading and error if needed for UI; currently not displayed
   const [, setPlayersLoading] = useState(false);
   const [, setPlayersError] = useState<string | null>(null);
 
-  const currentWeek = 10;
+  const [, setIsGamesLoading] = useState(true);
 
-  // Load existing picks if user has already submitted
+  // Helper types for betting odds
+  type BettingOddsResponse = {
+    odds?: { awayTeamSpread?: string; homeTeamSpread?: string };
+  };
+  type ApiWrapped<T> = { success?: boolean; data?: T };
+
+  // Helper maps for quick lookup
+  const teamIdToTeam = new Map<string, ITeam>(teams.map((t) => [t.teamID, t]));
+
+  // Join games with team details for UI convenience
+  const joinedCurrentWeekGames = games
+    .filter((g) => {
+      if (currentWeek == null) return true;
+      // Some seasons reset to Week 1; prefer deriving week from earliest upcoming or earliest present
+      // gameWeek is a string like "Week 1"; ensure numeric match
+      const weekNum = Number(g.gameWeek.match(/\d+/)?.[0] ?? NaN);
+      return !Number.isNaN(weekNum) && weekNum === currentWeek;
+    })
+    .map((g) => {
+      const homeTeam = teamIdToTeam.get(g.teamIDHome);
+      const awayTeam = teamIdToTeam.get(g.teamIDAway);
+      return {
+        id: Number(g.gameID) || (g.gameID as unknown as number),
+        raw: g,
+        homeTeam,
+        awayTeam,
+        gameDate: g.gameDate,
+        gameTime: g.gameTime,
+      };
+    });
+
+  // Load teams and games (with simple SPA-lifetime memoization)
   useEffect(() => {
-    const existingPicks = mockUserPicks.find(
-      (pick) => pick.userId === currentUser?.id
-    );
-    if (existingPicks) {
-      setHasSubmitted(existingPicks.isFinalized);
-
-      // Load spread picks
-      const spreadPicks: Record<number, string> = {};
-      existingPicks.picks.forEach((pick) => {
-        spreadPicks[pick.gameId] = pick.selectedTeam;
-      });
-      setPicks(spreadPicks);
-
-      // Load other picks
-      if (existingPicks.lockOfWeek) {
-        setLockOfWeek(
-          `${existingPicks.lockOfWeek.gameId}-${existingPicks.lockOfWeek.selectedTeam}`
-        );
-      }
-      if (existingPicks.touchdownScorer) {
-        setTouchdownScorer(existingPicks.touchdownScorer.playerId.toString());
-        setPlayerSearchValue(existingPicks.touchdownScorer.playerName);
-      }
-      if (existingPicks.propBet) {
-        setPropBet(existingPicks.propBet.description);
-        // Note: odds field doesn't exist in current mock data, so we'll set empty string
-        setPropBetOdds("");
-      }
+    let active = true;
+    const cachedTeams = memCache.get<ITeam[]>("teams");
+    const cachedGames = memCache.get<IGame[]>("games");
+    if (cachedTeams && cachedGames) {
+      setTeams(cachedTeams);
+      setGames(cachedGames);
+      setIsGamesLoading(false);
+      const weekNums = cachedGames
+        .map((g) => g.gameWeek)
+        .map((w) => (typeof w === "string" ? w.match(/\d+/)?.[0] : undefined))
+        .filter((n): n is string => Boolean(n))
+        .map((n) => Number(n))
+        .filter((n) => !Number.isNaN(n));
+      if (weekNums.length) setCurrentWeek(Math.min(...weekNums));
+      return () => {
+        active = false;
+      };
     }
+
+    Promise.all([
+      apiClient.get<{ success: boolean; data?: ITeam[] }>("teams"),
+      apiClient.get<{ success: boolean; data?: IGame[] }>("games"),
+    ])
+      .then(([teamsRes, gamesRes]) => {
+        if (!active) return;
+        const teamList = Array.isArray(teamsRes.data) ? teamsRes.data : [];
+        const gameList = Array.isArray(gamesRes.data) ? gamesRes.data : [];
+        setTeams(teamList);
+        setGames(gameList);
+        memCache.set("teams", teamList);
+        memCache.set("games", gameList);
+        setIsGamesLoading(false);
+        // Derive current week as the minimal week among games in the current season set
+        const weekNums = gameList
+          .map((g) => g.gameWeek)
+          .map((w) => (typeof w === "string" ? w.match(/\d+/)?.[0] : undefined))
+          .filter((n): n is string => Boolean(n))
+          .map((n) => Number(n))
+          .filter((n) => !Number.isNaN(n));
+        if (weekNums.length) {
+          setCurrentWeek(Math.min(...weekNums));
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        setTeams([]);
+        setGames([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Load existing picks if user has already submitted (placeholder, since mocks removed)
+  useEffect(() => {
+    // TODO: integrate with real user picks API when available
+    setHasSubmitted(false);
   }, [currentUser]);
+
+  // Fetch betting odds for games in current view
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const toFetch = joinedCurrentWeekGames
+      .map((g) => g.raw.gameID)
+      .filter((id): id is string => typeof id === "string" && id.length > 0)
+      .filter((id) => !oddsByGameId[id] && !memCache.get(`odds:${id}`));
+    if (toFetch.length === 0) return;
+    Promise.all(
+      toFetch.map((gameId) =>
+        apiClient
+          .get<BettingOddsResponse | ApiWrapped<BettingOddsResponse>>(
+            `betting-odds/${encodeURIComponent(gameId)}`,
+            {
+              signal: controller.signal,
+            }
+          )
+          .then((res) => ({ gameId, res }))
+          .catch(() => ({ gameId, res: undefined }))
+      )
+    ).then((results) => {
+      if (!active) return;
+      setOddsByGameId((prev) => {
+        const next = { ...prev };
+        for (const { gameId, res } of results) {
+          if (!res) continue;
+          // Handle both plain document and ApiResponse-wrapped
+          const payload = res as
+            | BettingOddsResponse
+            | ApiWrapped<BettingOddsResponse>;
+          let odds: BettingOddsResponse["odds"] | undefined;
+          if (
+            payload &&
+            (payload as ApiWrapped<BettingOddsResponse>).data !== undefined
+          ) {
+            odds = (payload as ApiWrapped<BettingOddsResponse>).data?.odds;
+          } else {
+            odds = (payload as BettingOddsResponse).odds;
+          }
+          next[gameId] = {
+            awayTeamSpread: odds?.awayTeamSpread,
+            homeTeamSpread: odds?.homeTeamSpread,
+          };
+          memCache.set(`odds:${gameId}`, next[gameId]);
+        }
+        return next;
+      });
+    });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [joinedCurrentWeekGames, oddsByGameId]);
 
   const handlePickChange = (gameId: number, team: string) => {
     setPicks((prev) => ({
@@ -112,8 +235,30 @@ const Picks = () => {
     setPlayerSearchOpen(false);
   };
 
-  const formatGameTime = (gameTime: string) => {
-    return new Date(gameTime).toLocaleDateString("en-US", {
+  const parseGameDateTime = (gameDate: string, gameTime: string) => {
+    // gameDate: "YYYYMMDD" (e.g., 20250904), gameTime: like "8:20p" or "1:00p"
+    const yyyy = Number(gameDate.slice(0, 4));
+    const mm = Number(gameDate.slice(4, 6));
+    const dd = Number(gameDate.slice(6, 8));
+    const timeMatch = gameTime
+      .trim()
+      .match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
+    let hours = 12;
+    let minutes = 0;
+    if (timeMatch) {
+      hours = Number(timeMatch[1]);
+      minutes = timeMatch[2] ? Number(timeMatch[2]) : 0;
+      const meridiem = timeMatch[3].toLowerCase();
+      if (meridiem === "p" && hours !== 12) hours += 12;
+      if (meridiem === "a" && hours === 12) hours = 0;
+    }
+    // Months are 0-based in JS Date
+    return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
+  };
+
+  const formatGameTime = (gameDate: string, gameTime: string) => {
+    const date = parseGameDateTime(gameDate, gameTime);
+    return date.toLocaleDateString("en-US", {
       weekday: "short",
       month: "short",
       day: "numeric",
@@ -122,12 +267,12 @@ const Picks = () => {
     });
   };
 
-  const isGameStarted = (gameTime: string) => {
-    return new Date(gameTime) <= new Date();
+  const isGameStarted = (gameDate: string, gameTime: string) => {
+    return parseGameDateTime(gameDate, gameTime) <= new Date();
   };
 
   const canSubmit = () => {
-    const requiredPicks = currentWeekGames.length;
+    const requiredPicks = joinedCurrentWeekGames.length;
     const submittedPicks = Object.keys(picks).length;
     return (
       submittedPicks === requiredPicks &&
@@ -195,7 +340,7 @@ const Picks = () => {
             Make Your Picks
           </h1>
           <p className="text-muted-foreground mt-1">
-            Week {currentWeek} • {currentWeekGames.length} games
+            Week {currentWeek ?? "-"} • {joinedCurrentWeekGames.length} games
           </p>
         </div>
         {hasSubmitted && (
@@ -218,8 +363,8 @@ const Picks = () => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {currentWeekGames.map((game) => {
-              const gameStarted = isGameStarted(game.gameTime);
+            {joinedCurrentWeekGames.map((game) => {
+              const gameStarted = isGameStarted(game.gameDate, game.gameTime);
 
               return (
                 <div
@@ -230,7 +375,7 @@ const Picks = () => {
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-sm text-muted-foreground">
-                      {formatGameTime(game.gameTime)}
+                      {formatGameTime(game.gameDate, game.gameTime)}
                       {gameStarted && (
                         <Badge variant="secondary" className="ml-2 text-xs">
                           Started
@@ -246,32 +391,32 @@ const Picks = () => {
                     <div className="flex items-center gap-3 text-lg font-medium">
                       <div
                         className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
-                          picks[game.id] === game.awayTeam?.abbreviation
+                          picks[game.id] === game.awayTeam?.teamAbv
                             ? "bg-muted"
                             : ""
                         }`}
                       >
                         <img
-                          src={game.awayTeam?.logoUrl}
-                          alt={`${game.awayTeam?.abbreviation} logo`}
+                          src={game.awayTeam?.espnLogo1}
+                          alt={`${game.awayTeam?.teamAbv} logo`}
                           className="w-6 h-6 rounded-full"
                         />
-                        <span>{game.awayTeam?.abbreviation}</span>
+                        <span>{game.awayTeam?.teamAbv}</span>
                       </div>
                       <span className="text-muted-foreground">@</span>
                       <div
                         className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
-                          picks[game.id] === game.homeTeam?.abbreviation
+                          picks[game.id] === game.homeTeam?.teamAbv
                             ? "bg-muted"
                             : ""
                         }`}
                       >
                         <img
-                          src={game.homeTeam?.logoUrl}
-                          alt={`${game.homeTeam?.abbreviation} logo`}
+                          src={game.homeTeam?.espnLogo1}
+                          alt={`${game.homeTeam?.teamAbv} logo`}
                           className="w-6 h-6 rounded-full"
                         />
-                        <span>{game.homeTeam?.abbreviation}</span>
+                        <span>{game.homeTeam?.teamAbv}</span>
                       </div>
                     </div>
                   </div>
@@ -279,7 +424,7 @@ const Picks = () => {
                   <div className="flex gap-2 mt-3">
                     <Button
                       variant={
-                        picks[game.id] === game.awayTeam?.abbreviation
+                        picks[game.id] === game.awayTeam?.teamAbv
                           ? "default"
                           : "outline"
                       }
@@ -288,34 +433,32 @@ const Picks = () => {
                       onClick={() =>
                         handlePickChange(
                           game.id,
-                          game.awayTeam?.abbreviation as string
+                          (game.awayTeam?.teamAbv as string) || ""
                         )
                       }
                       disabled={gameStarted}
                       style={{
                         backgroundColor:
-                          picks[game.id] === game.awayTeam?.abbreviation
+                          picks[game.id] === game.awayTeam?.teamAbv
                             ? "#22c55e"
                             : undefined,
-                        borderColor: game.awayTeam?.primaryColor,
                         color:
-                          picks[game.id] === game.awayTeam?.abbreviation
+                          picks[game.id] === game.awayTeam?.teamAbv
                             ? "#ffffff"
-                            : game.awayTeam?.primaryColor,
+                            : undefined,
                       }}
                       onMouseEnter={(e) => {
                         if (
                           !gameStarted &&
-                          picks[game.id] !== game.awayTeam?.abbreviation
+                          picks[game.id] !== game.awayTeam?.teamAbv
                         ) {
-                          e.currentTarget.style.backgroundColor =
-                            game.awayTeam?.primaryColor + "20";
+                          e.currentTarget.style.backgroundColor = "#00000010";
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (
                           !gameStarted &&
-                          picks[game.id] !== game.awayTeam?.abbreviation
+                          picks[game.id] !== game.awayTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "";
                         }
@@ -323,27 +466,24 @@ const Picks = () => {
                     >
                       <div className="flex flex-col items-center gap-1">
                         <img
-                          src={game.awayTeam?.logoUrl}
-                          alt={`${game.awayTeam?.abbreviation} logo`}
+                          src={game.awayTeam?.espnLogo1}
+                          alt={`${game.awayTeam?.teamAbv} logo`}
                           className="w-6 h-6 rounded-full"
                         />
                         <div className="text-center">
                           <div className="font-semibold text-sm">
-                            {game.awayTeam?.abbreviation}
+                            {game.awayTeam?.teamAbv}
                           </div>
                           <div className="text-xs opacity-80">
-                            {game.spread > 0
-                              ? `+${game.spread}`
-                              : game.spread < 0
-                              ? `${game.spread}`
-                              : "PK"}
+                            {oddsByGameId[game.raw.gameID]?.awayTeamSpread ||
+                              "PK"}
                           </div>
                         </div>
                       </div>
                     </Button>
                     <Button
                       variant={
-                        picks[game.id] === game.homeTeam?.abbreviation
+                        picks[game.id] === game.homeTeam?.teamAbv
                           ? "default"
                           : "outline"
                       }
@@ -352,34 +492,32 @@ const Picks = () => {
                       onClick={() =>
                         handlePickChange(
                           game.id,
-                          game.homeTeam?.abbreviation as string
+                          (game.homeTeam?.teamAbv as string) || ""
                         )
                       }
                       disabled={gameStarted}
                       style={{
                         backgroundColor:
-                          picks[game.id] === game.homeTeam?.abbreviation
+                          picks[game.id] === game.homeTeam?.teamAbv
                             ? "#22c55e"
                             : undefined,
-                        borderColor: game.homeTeam?.primaryColor,
                         color:
-                          picks[game.id] === game.homeTeam?.abbreviation
+                          picks[game.id] === game.homeTeam?.teamAbv
                             ? "#ffffff"
-                            : game.homeTeam?.primaryColor,
+                            : undefined,
                       }}
                       onMouseEnter={(e) => {
                         if (
                           !gameStarted &&
-                          picks[game.id] !== game.homeTeam?.abbreviation
+                          picks[game.id] !== game.homeTeam?.teamAbv
                         ) {
-                          e.currentTarget.style.backgroundColor =
-                            game.homeTeam?.primaryColor + "20";
+                          e.currentTarget.style.backgroundColor = "#00000010";
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (
                           !gameStarted &&
-                          picks[game.id] !== game.homeTeam?.abbreviation
+                          picks[game.id] !== game.homeTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "";
                         }
@@ -387,20 +525,17 @@ const Picks = () => {
                     >
                       <div className="flex flex-col items-center gap-1">
                         <img
-                          src={game.homeTeam?.logoUrl}
-                          alt={`${game.homeTeam?.abbreviation} logo`}
+                          src={game.homeTeam?.espnLogo1}
+                          alt={`${game.homeTeam?.teamAbv} logo`}
                           className="w-6 h-6 rounded-full"
                         />
                         <div className="text-center">
                           <div className="font-semibold text-sm">
-                            {game.homeTeam?.abbreviation}
+                            {game.homeTeam?.teamAbv}
                           </div>
                           <div className="text-xs opacity-80">
-                            {game.spread < 0
-                              ? `+${Math.abs(game.spread)}`
-                              : game.spread > 0
-                              ? `${game.spread}`
-                              : "PK"}
+                            {oddsByGameId[game.raw.gameID]?.homeTeamSpread ||
+                              "PK"}
                           </div>
                         </div>
                       </div>
@@ -432,24 +567,26 @@ const Picks = () => {
                 <SelectValue placeholder="Select your lock of the week" />
               </SelectTrigger>
               <SelectContent>
-                {currentWeekGames.map((game) => {
+                {joinedCurrentWeekGames.map((game) => {
                   const userPick = picks[game.id];
                   if (!userPick) return null;
 
                   const selectedTeam =
-                    game.awayTeam?.abbreviation === userPick
+                    game.awayTeam?.teamAbv === userPick
                       ? game.awayTeam
                       : game.homeTeam;
 
                   return (
                     <SelectItem key={game.id} value={`${game.id}-${userPick}`}>
                       <div className="flex items-center gap-2">
-                        <img
-                          src={selectedTeam?.logoUrl}
-                          alt={`${selectedTeam?.abbreviation} logo`}
-                          className="w-4 h-4 rounded-full"
-                        />
-                        <span>{game.homeTeam?.abbreviation}</span>
+                        {selectedTeam?.espnLogo1 && (
+                          <img
+                            src={selectedTeam.espnLogo1}
+                            alt={`${selectedTeam.teamAbv} logo`}
+                            className="w-4 h-4 rounded-full"
+                          />
+                        )}
+                        <span>{selectedTeam?.teamAbv}</span>
                       </div>
                     </SelectItem>
                   );
@@ -613,7 +750,8 @@ const Picks = () => {
             <div className="flex justify-between text-sm">
               <span>Progress</span>
               <span>
-                {Object.keys(picks).length}/{currentWeekGames.length} games
+                {Object.keys(picks).length}/{joinedCurrentWeekGames.length}{" "}
+                games
               </span>
             </div>
             <div className="w-full bg-secondary rounded-full h-2">
@@ -621,7 +759,9 @@ const Picks = () => {
                 className="bg-primary h-2 rounded-full transition-all duration-300"
                 style={{
                   width: `${
-                    (Object.keys(picks).length / currentWeekGames.length) * 100
+                    (Object.keys(picks).length /
+                      (joinedCurrentWeekGames.length || 1)) *
+                    100
                   }%`,
                 }}
               ></div>

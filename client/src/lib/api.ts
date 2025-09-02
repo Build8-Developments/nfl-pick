@@ -58,7 +58,6 @@ export class ApiClient {
     options: ApiRequestOptions = {}
   ): Promise<TResponse> {
     const url = this.composeUrl(path, options.query);
-    console.log("request", url, options);
     const token = this.getToken?.();
     const headers: Record<string, string> = {
       ...this.defaultHeaders,

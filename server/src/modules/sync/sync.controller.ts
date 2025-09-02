@@ -3,9 +3,12 @@ import {
   syncWeekGames,
   syncSeasonGames,
   syncAllPlayers,
+  syncBettingOddsForGame,
+  syncBettingOddsForAllGames,
 } from "./sync.service.js";
 import { ApiResponse } from "../../utils/ApiResponse.js";
 import { insertPlayers } from "../players/players.service.js";
+import { syncTeams } from "../teams/team.service.js";
 
 export const triggerSyncNow = async (req: Request, res: Response) => {
   try {
@@ -38,13 +41,51 @@ export const triggerSyncAllPlayers = async (req: Request, res: Response) => {
       return res.status(404).json(ApiResponse.error("No players found"));
     }
 
-    // save players to database
-    const players = result.body;
-
-    const newPlayers = await insertPlayers(players);
-
-    console.log(typeof newPlayers);
+    return res.json(ApiResponse.success(result, "Players synced successfully"));
   } catch (error) {
     res.status(500).json({ message: "Players sync failed" });
+  }
+};
+
+export const triggerSyncBettingOdds = async (req: Request, res: Response) => {
+  try {
+    const { gameId } = req.params as { gameId: string };
+
+    const result = await syncBettingOddsForGame(gameId);
+
+    if (!result) {
+      return res
+        .status(404)
+        .json(ApiResponse.error("No betting odds found for game"));
+    }
+
+    return res.json(
+      ApiResponse.success(result, "Betting odds synced successfully")
+    );
+  } catch (error) {
+    return res.status(500).json(ApiResponse.error("Betting odds sync failed"));
+  }
+};
+
+export const triggerSyncBettingOddsForAllGames = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const result = await syncBettingOddsForAllGames();
+    return res.json(
+      ApiResponse.success(result, "Betting odds synced successfully")
+    );
+  } catch (error) {
+    return res.status(500).json(ApiResponse.error("Betting odds sync failed"));
+  }
+};
+
+export const triggerSyncTeams = async (req: Request, res: Response) => {
+  try {
+    const result = await syncTeams();
+    return res.json(ApiResponse.success(result, "Teams synced successfully"));
+  } catch (error) {
+    return res.status(500).json(ApiResponse.error("Teams sync failed"));
   }
 };

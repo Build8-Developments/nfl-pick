@@ -1,6 +1,10 @@
 import { getNFLPlayers, getNFLGamesForWeek } from "../../api/nfl.js";
+import { ApiResponse } from "../../utils/ApiResponse.js";
+import BettingOdds from "../betting-odds/bettingOdds.model.js";
+import { getNFLBettingOddsForGame } from "../betting-odds/bettingOdds.service.js";
 import type { IGame } from "../games/games.model.js";
 import { insertGames } from "../games/games.service.js";
+import { insertPlayers } from "../players/players.service.js";
 
 const getCurrentSeason = () => {
   const now = new Date();
@@ -133,11 +137,88 @@ export const syncSeasonGames = async (season?: number) => {
   };
 };
 
-// sybnc all players
+// sync all players
 export const syncAllPlayers = async () => {
-  const players = await getNFLPlayers();
-  console.log(players);
-  return players;
+  const result = await getNFLPlayers();
+
+  if (!result) {
+    return ApiResponse.error("No players found");
+  }
+
+  await insertPlayers(result.body);
+
+  return result;
+};
+
+export const syncBettingOddsForGame = async (gameId: string) => {
+  const result = await getNFLBettingOddsForGame(gameId);
+
+  if (!result) {
+    return ApiResponse.error("No betting odds found for game");
+  }
+
+  const key = Object.keys(result)[0];
+  const data = result[key as keyof typeof result];
+
+  const gameDoc = {
+    gameID: data.gameID,
+    gameDate: data.gameDate,
+    homeTeam: data.homeTeam,
+    awayTeam: data.awayTeam,
+    teamIDHome: data.teamIDHome,
+    teamIDAway: data.teamIDAway,
+    lastUpdatedETime: data.last_updated_e_time,
+    odds: {
+      awayTeamSpread: data.espnbet.awayTeamSpread,
+      homeTeamSpread: data.espnbet.homeTeamSpread,
+    },
+  };
+
+  const bettingOdds = await BettingOdds.findOneAndUpdate(
+    { gameID: gameDoc.gameID },
+    gameDoc,
+    { upsert: true, new: true }
+  );
+
+  return bettingOdds;
+};
+
+export const syncBettingOddsForAllGames = async () => {
+  const games = await getNFLGamesForWeek();
+
+  const rawGames = Array.isArray(games?.body) ? games.body : [];
+
+  const mappedGames = rawGames.map((game: IGame) => ({
+    gameID: game.gameID,
+    gameDate: game.gameDate,
+    homeTeam: game.home,
+    awayTeam: game.away,
+    teamIDHome: game.teamIDHome,
+    teamIDAway: game.teamIDAway,
+  }));
+
+  const failedGames: string[] = [];
+
+  for (const game of mappedGames) {
+    const result = await syncBettingOddsForGame(game.gameID);
+    if (result) {
+      console.log(`Synced betting odds for game ${game.gameID}`);
+    } else {
+      console.log(`Failed to sync betting odds for game ${game.gameID}`);
+      failedGames.push(game.gameID);
+    }
+  }
+
+  return {
+    message: "Betting odds synced for all games",
+    games: mappedGames.map((game: IGame) => game.gameID),
+    failedGames: failedGames,
+    totals: {
+      games: mappedGames.length,
+      synced: mappedGames.filter((game: IGame) => game.gameID).length,
+      failed: failedGames.length,
+    },
+  };
 };
 
 export { syncWeekGames };

@@ -14,6 +14,7 @@ import cron from "node-cron";
 import {
   syncWeekGames,
   syncAllPlayers,
+  syncBettingOddsForAllGames,
 } from "./src/modules/sync/sync.service.js";
 
 const server = express();
@@ -90,6 +91,21 @@ server.use(errorHandler);
       });
       console.log(
         "[Scheduler] Monthly sync scheduled: 00:00 on the first Monday of each month"
+      );
+
+      // Schedule: Every Monday at 01:00 to sync betting odds for current week
+      cron.schedule("0 1 * * 1", async () => {
+        try {
+          const result = await syncBettingOddsForAllGames();
+          console.log(
+            `[Scheduler] Weekly betting odds sync complete. Total games: ${result.totals.games}, synced: ${result.totals.synced}, failed: ${result.totals.failed}`
+          );
+        } catch (err) {
+          console.error("[Scheduler] Failed weekly betting odds sync:", err);
+        }
+      });
+      console.log(
+        "[Scheduler] Weekly betting odds sync scheduled: 01:00 every Monday"
       );
     });
   } catch (error) {
