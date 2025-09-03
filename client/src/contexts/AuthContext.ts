@@ -5,6 +5,7 @@ export type User = {
   name: string;
   email: string;
   isAdmin: boolean;
+  avatar?: string;
   seasonRecord: {
     wins: number;
     losses: number;
@@ -16,9 +17,10 @@ export type User = {
 export type AuthContextValue = {
   currentUser: User | null;
   login: (
-    email: string,
+    identifier: string,
     password: string
-  ) => { success: true; user: User } | { success: false; error: string };
+  ) => Promise<{ success: true; user: User } | { success: false; error: string }>;
+  devLoginMock: (user: User) => void;
   logout: () => void;
   isLoading: boolean;
 };

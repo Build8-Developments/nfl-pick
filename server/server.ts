@@ -37,19 +37,24 @@ server.use(morgan("dev"));
 server.use(
   helmet({
     contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
   })
 );
 server.use(
   cors({
-    origin: "*",
+    // Reflect request origin (required when using credentials)
+    origin: true,
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
     maxAge: 86400,
+    optionsSuccessStatus: 204,
   })
 );
 server.use(express.json({ limit: "10mb" }));
 server.use(express.urlencoded({ extended: true }));
+// Serve uploads (avatars) statically so the client can access them
+server.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Rate limiting
 const limiter = rateLimit({

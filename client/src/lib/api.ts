@@ -22,7 +22,7 @@ const resolveBaseUrl = (override?: string) => {
   const env = import.meta.env.MODE || process.env.NODE_ENV || "development";
   // Per requirement: use http://localhost:3000/api/v1/ for both dev and prod for now
   const devUrl = "http://localhost:3000/api/v1/";
-  const prodUrl = "http://localhost:3000/api/v1/";
+  const prodUrl = "https://api.blockhaven.net/api/v1/";
   return ensureTrailingSlash(env === "development" ? devUrl : prodUrl);
 };
 
@@ -72,10 +72,21 @@ export class ApiClient {
       signal: options.signal,
     };
     if (options.body !== undefined && method !== "GET") {
-      fetchInit.body =
-        headers["Content-Type"] === "application/json"
-          ? JSON.stringify(options.body)
-          : (options.body as BodyInit);
+      // If body is FormData, let the browser set the correct Content-Type with boundary
+      const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+      if (isFormData) {
+        // Remove any explicit content-type header to avoid boundary issues
+        if (headers["Content-Type"]) {
+          delete headers["Content-Type"];
+        }
+        fetchInit.headers = headers;
+        fetchInit.body = options.body as BodyInit;
+      } else {
+        fetchInit.body =
+          headers["Content-Type"] === "application/json"
+            ? JSON.stringify(options.body)
+            : (options.body as BodyInit);
+      }
     }
 
     const res = await fetch(url, fetchInit);
@@ -163,3 +174,6 @@ export const apiClient = new ApiClient({
     }
   },
 });
+
+// Origin (protocol + host + port) of the API, useful for resolving absolute asset URLs
+export const apiOrigin: string = new URL(resolveBaseUrl()).origin;

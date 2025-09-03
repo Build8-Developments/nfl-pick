@@ -6,6 +6,7 @@ export interface IUser extends Document {
   passwordHash: string;
   avatar: string;
   role: "admin" | "user";
+  email?: string;
 
   points?: number;
   totalBets?: number;
@@ -38,6 +39,13 @@ const UserSchema = new Schema<IUser>(
     avatar: {
       type: String,
       default: "https://placehold.co/64x64",
+    },
+
+    email: {
+      type: String,
+      lowercase: true,
+      trim: true,
+      sparse: true, // allow multiple docs without email
     },
 
     role: {
@@ -93,6 +101,11 @@ const UserSchema = new Schema<IUser>(
 
 UserSchema.index({ points: -1 });
 UserSchema.index({ role: 1 });
+// Ensure unique emails only when provided
+UserSchema.index(
+  { email: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { email: { $type: "string" } } }
+);
 
 UserSchema.virtual("calculatedWinRate").get(function () {
   if (!this.totalBets || this.totalBets === 0) return 0;
