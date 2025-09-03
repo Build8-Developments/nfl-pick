@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
+import { apiOrigin } from "../lib/api";
 
 const Layout = () => {
   const { currentUser, logout } = useAuth();
@@ -27,6 +28,7 @@ const Layout = () => {
     { name: "Dashboard", href: "/", icon: Home },
     { name: "Make Picks", href: "/picks", icon: FileText },
     { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
+    { name: "Live Picks", href: "/live-picks", icon: Home },
     ...(currentUser?.isAdmin
       ? [{ name: "Admin", href: "/admin", icon: Settings }]
       : []),
@@ -38,6 +40,17 @@ const Layout = () => {
     }
     return location.pathname.startsWith(href);
   };
+
+  const computeAvatarUrl = (raw?: string) => {
+    const placeholder = "https://placehold.co/64x64";
+    if (!raw) return placeholder;
+    if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+    if (raw.startsWith("/uploads")) return `${apiOrigin}${raw}`;
+    if (raw.startsWith("uploads/")) return `${apiOrigin}/${raw}`;
+    return raw;
+  };
+
+  const avatarUrl = computeAvatarUrl(currentUser?.avatar);
 
   return (
     <div className="min-h-screen bg-background">
@@ -65,12 +78,21 @@ const Layout = () => {
         <div className="flex flex-col h-full">
           {/* Header */}
           <div className="p-6 border-b">
-            <h1 className="text-xl font-bold text-foreground">NFL Picks</h1>
-            {currentUser && (
-              <p className="text-sm text-muted-foreground mt-1">
-                Welcome, {currentUser.name}
-              </p>
-            )}
+            <div className="flex items-center gap-3">
+              <img
+                src={avatarUrl}
+                alt="User avatar"
+                className="h-10 w-10 rounded-full object-cover border"
+              />
+              <div>
+                <h1 className="text-xl font-bold text-foreground">NFL Picks</h1>
+                {currentUser && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Welcome, {currentUser.name}
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Navigation */}
@@ -98,16 +120,23 @@ const Layout = () => {
           {/* User info and logout */}
           <div className="p-4 border-t">
             <div className="flex items-center justify-between">
-              <div className="text-sm">
-                <p className="font-medium text-foreground">
-                  {currentUser?.name}
-                </p>
-                <p className="text-muted-foreground">
-                  {currentUser?.seasonRecord.wins}-
-                  {currentUser?.seasonRecord.losses}(
-                  {(currentUser?.seasonRecord.percentage ?? 0 * 100).toFixed(1)}
-                  %)
-                </p>
+              <div className="flex items-center gap-3">
+                <img
+                  src={avatarUrl}
+                  alt="User avatar"
+                  className="h-8 w-8 rounded-full object-cover border"
+                />
+                <div className="text-sm">
+                  <p className="font-medium text-foreground">
+                    {currentUser?.name}
+                  </p>
+                  <p className="text-muted-foreground">
+                    {currentUser?.seasonRecord.wins}-
+                    {currentUser?.seasonRecord.losses}(
+                    {(currentUser?.seasonRecord.percentage ?? 0 * 100).toFixed(1)}
+                    %)
+                  </p>
+                </div>
               </div>
               <Button
                 variant="ghost"

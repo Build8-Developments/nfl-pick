@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/useAuth";
 import {
   Card,
@@ -20,23 +20,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  CheckCircle,
-  XCircle,
-  Edit,
-  Save,
-  AlertTriangle,
-  Clock,
-  Trophy,
-  Target,
-  Users,
-} from "lucide-react";
+import { CheckCircle, XCircle, Save, AlertTriangle, Clock, Trophy, Target, Users } from "lucide-react";
 import {
   currentWeekGames,
   pendingPropBets,
   mockUserPicks,
-  users,
+  users as mockUsers,
 } from "../data/mockData";
+import { apiClient, apiOrigin } from "../lib/api";
+
+type ApiSuccess<T> = { success: true; data: T; message?: string };
+
+type ApiUser = {
+  _id: string;
+  username: string;
+  email?: string;
+  role: "user" | "admin";
+  avatar?: string;
+};
 
 const Admin = () => {
   const { currentUser } = useAuth();
@@ -45,7 +46,132 @@ const Admin = () => {
     {}
   );
   const [isUpdating, setIsUpdating] = useState(false);
-  const [selectedWeek, setSelectedWeek] = useState("10");
+  const [selectedWeek] = useState("10");
+
+  // Users list state
+  const [users, setUsers] = useState<ApiUser[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [usersError, setUsersError] = useState<string | null>(null);
+
+  // Create User form state
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newRole, setNewRole] = useState<"user" | "admin">("user");
+  const [newAvatarFile, setNewAvatarFile] = useState<File | null>(null);
+  const [createUserError, setCreateUserError] = useState<string | null>(null);
+  const [createUserSuccess, setCreateUserSuccess] = useState<string | null>(null);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+
+  // Edit User state
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editUsername, setEditUsername] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editRole, setEditRole] = useState<"user" | "admin">("user");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  const fetchUsers = async () => {
+    try {
+      setIsLoadingUsers(true);
+      setUsersError(null);
+      const res = await apiClient.get<ApiSuccess<ApiUser[]>>("users");
+      setUsers(res.data ?? []);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to load users";
+      setUsersError(msg);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  const fetchUserById = async (id: string) => {
+    const res = await apiClient.get<ApiSuccess<ApiUser>>(`users/${id}`);
+    return res.data as ApiUser;
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const handleCreateUser = async () => {
+    setCreateUserError(null);
+    setCreateUserSuccess(null);
+    if (!newUsername || !newPassword) {
+      setCreateUserError("Username and password are required");
+      return;
+    }
+    try {
+      setIsCreatingUser(true);
+      const form = new FormData();
+      form.append("username", newUsername);
+      form.append("passwordHash", newPassword);
+      if (newEmail.trim()) form.append("email", newEmail.trim());
+      form.append("role", newRole);
+      if (newAvatarFile) form.append("avatar", newAvatarFile);
+
+      const res = await apiClient.post<{ data: unknown }>("users", form, {
+        headers: {
+          // Let the api client drop content-type for FormData
+        },
+      });
+      if (res) {
+        setCreateUserSuccess("User created successfully");
+        setNewUsername("");
+        setNewPassword("");
+        setNewRole("user");
+        setNewEmail("");
+        setNewAvatarFile(null);
+        fetchUsers();
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to create user";
+      setCreateUserError(errorMessage);
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
+
+  const beginEditUser = async (id: string) => {
+    try {
+      setEditingUserId(id);
+      const u = await fetchUserById(id);
+      setEditUsername(u.username ?? "");
+      setEditEmail(u.email ?? "");
+      setEditRole(u.role);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to load user";
+      setCreateUserError(msg);
+      setEditingUserId(null);
+    }
+  };
+
+  const saveEditUser = async () => {
+    if (!editingUserId) return;
+    try {
+      setIsSavingEdit(true);
+      const body = { username: editUsername, email: editEmail || undefined, role: editRole };
+      await apiClient.patch<ApiSuccess<ApiUser>>(`users/${editingUserId}`, body);
+      setEditingUserId(null);
+      fetchUsers();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to save user";
+      setCreateUserError(msg);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const deleteUser = async (id: string) => {
+    if (!confirm("Delete this user?")) return;
+    try {
+      await apiClient.delete<ApiSuccess<ApiUser>>(`users/${id}`);
+      if (editingUserId === id) setEditingUserId(null);
+      fetchUsers();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to delete user";
+      setCreateUserError(msg);
+    }
+  };
 
   // Check if user is admin
   if (!currentUser?.isAdmin) {
@@ -73,16 +199,6 @@ const Admin = () => {
     await new Promise((resolve) => setTimeout(resolve, 1500));
     setIsUpdating(false);
     // Show success message
-  };
-
-  const formatGameTime = (gameTime: string) => {
-    return new Date(gameTime).toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
   };
 
   const getGameStatus = (gameTime: string) => {
@@ -143,7 +259,7 @@ const Admin = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {currentWeekStats.submittedPicks}/{users.length}
+              {currentWeekStats.submittedPicks}/{mockUsers.length}
             </div>
             <p className="text-xs text-muted-foreground">players</p>
           </CardContent>
@@ -174,65 +290,11 @@ const Admin = () => {
         </Card>
       </div>
 
-      <Tabs defaultValue="games" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="games">Game Results</TabsTrigger>
+      <Tabs defaultValue="props" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="props">Prop Bets</TabsTrigger>
-          <TabsTrigger value="overrides">Manual Overrides</TabsTrigger>
+          <TabsTrigger value="users">Users</TabsTrigger>
         </TabsList>
-
-        {/* Game Results Management */}
-        <TabsContent value="games" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Trophy className="h-5 w-5" />
-                Week {selectedWeek} Game Results
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {currentWeekGames.map((game) => {
-                  const status = getGameStatus(game.gameTime);
-
-                  return (
-                    <div key={game.id} className="p-4 border rounded-lg">
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <div className="font-medium text-lg">
-                            {game.awayTeam?.abbreviation} @{" "}
-                            {game.homeTeam?.abbreviation}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {formatGameTime(game.gameTime)} • Spread:{" "}
-                            {game.homeTeam?.abbreviation}{" "}
-                            {game.spread > 0 ? "+" : ""}
-                            {game.spread}
-                          </div>
-                        </div>
-                        <Badge
-                          variant={
-                            status === "completed"
-                              ? "default"
-                              : status === "in_progress"
-                              ? "secondary"
-                              : "outline"
-                          }
-                        >
-                          {status === "completed"
-                            ? "Final"
-                            : status === "in_progress"
-                            ? "Live"
-                            : "Scheduled"}
-                        </Badge>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         {/* Prop Bet Management */}
         <TabsContent value="props" className="space-y-6">
@@ -249,7 +311,7 @@ const Admin = () => {
             <CardContent>
               <div className="space-y-4">
                 {pendingPropBets.map((propBet) => {
-                  const user = users.find((u) => u.id === propBet.userId);
+                  const user = mockUsers.find((u) => u.id === propBet.userId);
                   const action = propBetActions[propBet.id];
 
                   return (
@@ -347,123 +409,196 @@ const Admin = () => {
           </Card>
         </TabsContent>
 
-        {/* Manual Overrides */}
-        <TabsContent value="overrides" className="space-y-6">
+        {/* Users Management */}
+        <TabsContent value="users" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Edit className="h-5 w-5" />
-                Manual Overrides
+                <Users className="h-5 w-5" />
+                Create User
               </CardTitle>
-              <CardDescription>
-                Manually adjust scores and results when needed
-              </CardDescription>
+              <CardDescription>Create a user and assign a role</CardDescription>
             </CardHeader>
             <CardContent>
-              <Alert>
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription>
-                  Manual overrides should be used sparingly and only when
-                  automatic scoring fails or needs correction.
-                </AlertDescription>
-              </Alert>
-
-              <div className="mt-6 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="override-week">Week</Label>
-                    <Select
-                      value={selectedWeek}
-                      onValueChange={setSelectedWeek}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[7, 8, 9, 10].map((week) => (
-                          <SelectItem key={week} value={week.toString()}>
-                            Week {week}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="override-player">Player</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select player" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {users.map((user) => (
-                          <SelectItem key={user.id} value={user.id.toString()}>
-                            {user.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="new-username">Username</Label>
+                  <Input
+                    id="new-username"
+                    value={newUsername}
+                    onChange={(e) => setNewUsername(e.target.value)}
+                    placeholder="e.g. johndoe"
+                  />
                 </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="correct-picks">Correct Picks</Label>
-                    <Input
-                      id="correct-picks"
-                      type="number"
-                      min="0"
-                      max="16"
-                      placeholder="0"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="lock-correct">Lock Correct</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="true">Yes</SelectItem>
-                        <SelectItem value="false">No</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="td-correct">TD Scorer Correct</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="true">Yes</SelectItem>
-                        <SelectItem value="false">No</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="prop-correct">Prop Bet Correct</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="true">Yes</SelectItem>
-                        <SelectItem value="false">No</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-email">Email</Label>
+                  <Input
+                    id="new-email"
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="e.g. john@example.com"
+                  />
                 </div>
-
-                <div className="flex justify-end">
-                  <Button disabled={isUpdating}>
-                    <Save className="mr-2 h-4 w-4" />
-                    Apply Override
-                  </Button>
+                <div className="space-y-2">
+                  <Label htmlFor="new-password">Password</Label>
+                  <Input
+                    id="new-password"
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                  />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-role">Role</Label>
+                  <Select value={newRole} onValueChange={(v: string) => setNewRole(v as "user" | "admin")}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">User</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-avatar">Avatar</Label>
+                  <Input
+                    id="new-avatar"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setNewAvatarFile(e.target.files?.[0] ?? null)}
+                  />
+                </div>
+              </div>
+              {createUserError && (
+                <div className="mt-4">
+                  <Alert variant="destructive">
+                    <AlertDescription>{createUserError}</AlertDescription>
+                  </Alert>
+                </div>
+              )}
+              {createUserSuccess && (
+                <div className="mt-4">
+                  <Alert>
+                    <AlertDescription>{createUserSuccess}</AlertDescription>
+                  </Alert>
+                </div>
+              )}
+              <div className="mt-6 flex justify-end">
+                <Button onClick={handleCreateUser} disabled={isCreatingUser} className="min-w-32">
+                  {isCreatingUser ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Create User
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Users
+              </CardTitle>
+              <CardDescription>Manage existing users</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {usersError && (
+                <div className="mb-4">
+                  <Alert variant="destructive">
+                    <AlertDescription>{usersError}</AlertDescription>
+                  </Alert>
+                </div>
+              )}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left border-b">
+                      <th className="py-2 pr-4">Avatar</th>
+                      <th className="py-2 pr-4">Username</th>
+                      <th className="py-2 pr-4">Email</th>
+                      <th className="py-2 pr-4">Role</th>
+                      <th className="py-2 pr-4">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isLoadingUsers ? (
+                      <tr><td className="py-3" colSpan={5}>Loading...</td></tr>
+                    ) : users.length === 0 ? (
+                      <tr><td className="py-3" colSpan={5}>No users found</td></tr>
+                    ) : (
+                      users.map((u) => (
+                        <tr key={u._id} className="border-b">
+                          <td className="py-2 pr-4">
+                            <img
+                              src={u.avatar
+                                ? (u.avatar.startsWith("/uploads")
+                                    ? `${apiOrigin}${u.avatar}`
+                                    : u.avatar.startsWith("uploads/")
+                                    ? `${apiOrigin}/${u.avatar}`
+                                    : u.avatar)
+                                : "https://placehold.co/40x40"}
+                              alt="avatar"
+                              className="h-8 w-8 rounded-full object-cover border"
+                            />
+                          </td>
+                          <td className="py-2 pr-4">
+                            {editingUserId === u._id ? (
+                              <Input value={editUsername} onChange={(e) => setEditUsername(e.target.value)} />
+                            ) : (
+                              u.username
+                            )}
+                          </td>
+                          <td className="py-2 pr-4">
+                            {editingUserId === u._id ? (
+                              <Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+                            ) : (
+                              u.email ?? "—"
+                            )}
+                          </td>
+                          <td className="py-2 pr-4">
+                            {editingUserId === u._id ? (
+                              <Select value={editRole} onValueChange={(v: string) => setEditRole(v as "user" | "admin")}>
+                                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="user">User</SelectItem>
+                                  <SelectItem value="admin">Admin</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Badge variant={u.role === "admin" ? "default" : "secondary"}>{u.role}</Badge>
+                            )}
+                          </td>
+                          <td className="py-2 pr-4">
+                            {editingUserId === u._id ? (
+                              <div className="flex gap-2">
+                                <Button size="sm" onClick={saveEditUser} disabled={isSavingEdit}>
+                                  {isSavingEdit ? "Saving..." : "Save"}
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => setEditingUserId(null)}>Cancel</Button>
+                              </div>
+                            ) : (
+                              <div className="flex gap-2">
+                                <Button size="sm" variant="outline" onClick={() => beginEditUser(u._id)}>Edit</Button>
+                                <Button size="sm" variant="destructive" onClick={() => deleteUser(u._id)}>Delete</Button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </CardContent>
           </Card>

@@ -8,21 +8,25 @@ export const checkUserExistence = async (
   next: NextFunction
 ) => {
   try {
-    const { username } = req.body;
+    const { username, email } = req.body as { username?: string; email?: string };
 
-    const existingUser = await User.findOne({
-      $or: [{ username: username?.toLowerCase() }],
-    });
+    const query: any = { $or: [] as any[] };
+    if (username) query.$or.push({ username: username.toLowerCase() });
+    if (email) query.$or.push({ email: email.toLowerCase() });
+
+    const existingUser = query.$or.length > 0 ? await User.findOne(query) : null;
 
     if (existingUser) {
-      return res.status(409).json(
-        ApiResponse.error("User already exists", {
-          username:
-            existingUser.username === username?.toLowerCase()
-              ? "Username already taken"
-              : undefined,
-        })
-      );
+      return res.status(409).json(ApiResponse.error("User already exists", {
+        username:
+          username && existingUser.username === username.toLowerCase()
+            ? "Username already taken"
+            : undefined,
+        email:
+          email && (existingUser as any).email === email.toLowerCase()
+            ? "Email already in use"
+            : undefined,
+      }));
     }
 
     next();

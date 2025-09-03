@@ -5,6 +5,7 @@ export interface IUser {
   username: string; // Unique login username
   passwordHash: string; // Bcrypt hashed password
   avatar: string;
+  email?: string;
   role: "admin" | "user"; // Role-based access
 
   // Points system
