@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../contexts/useAuth";
 import {
   Card,
@@ -41,7 +41,6 @@ import {
   AlertTriangle,
   Save,
 } from "lucide-react";
-// Replace mock data with real API data
 import { apiClient } from "@/lib/api";
 import type { IPlayer } from "@/types/player.type";
 import type { IGame } from "@/types/game.type";
@@ -63,47 +62,86 @@ const Picks = () => {
   const [teams, setTeams] = useState<ITeam[]>([]);
   const [games, setGames] = useState<IGame[]>([]);
   const [currentWeek, setCurrentWeek] = useState<number | null>(null);
+  const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
+  const [availableWeeks, setAvailableWeeks] = useState<number[]>([]);
   const [oddsByGameId, setOddsByGameId] = useState<
     Record<string, { awayTeamSpread?: string; homeTeamSpread?: string }>
   >({});
-  // Track loading and error if needed for UI; currently not displayed
   const [, setPlayersLoading] = useState(false);
   const [, setPlayersError] = useState<string | null>(null);
-
   const [, setIsGamesLoading] = useState(true);
 
-  // Helper types for betting odds
   type BettingOddsResponse = {
     odds?: { awayTeamSpread?: string; homeTeamSpread?: string };
   };
   type ApiWrapped<T> = { success?: boolean; data?: T };
 
-  // Helper maps for quick lookup
-  const teamIdToTeam = new Map<string, ITeam>(teams.map((t) => [t.teamID, t]));
+  const teamIdToTeam = useMemo(() => {
+    return new Map<string, ITeam>(teams.map((t) => [t.teamID, t]));
+  }, [teams]);
 
-  // Join games with team details for UI convenience
-  const joinedCurrentWeekGames = games
-    .filter((g) => {
-      if (currentWeek == null) return true;
-      // Some seasons reset to Week 1; prefer deriving week from earliest upcoming or earliest present
-      // gameWeek is a string like "Week 1"; ensure numeric match
-      const weekNum = Number(g.gameWeek.match(/\d+/)?.[0] ?? NaN);
-      return !Number.isNaN(weekNum) && weekNum === currentWeek;
-    })
-    .map((g) => {
-      const homeTeam = teamIdToTeam.get(g.teamIDHome);
-      const awayTeam = teamIdToTeam.get(g.teamIDAway);
-      return {
-        id: Number(g.gameID) || (g.gameID as unknown as number),
-        raw: g,
-        homeTeam,
-        awayTeam,
-        gameDate: g.gameDate,
-        gameTime: g.gameTime,
-      };
-    });
+  const joinedCurrentWeekGames = useMemo(() => {
+    return games
+      .filter((g) => {
+        if (selectedWeek == null) return true;
+        const weekNum = Number(g.gameWeek.match(/\d+/)?.[0] ?? NaN);
+        return !Number.isNaN(weekNum) && weekNum === selectedWeek;
+      })
+      .map((g) => {
+        const homeTeam = teamIdToTeam.get(g.teamIDHome);
+        const awayTeam = teamIdToTeam.get(g.teamIDAway);
+        return {
+          id: Number(g.gameID) || (g.gameID as unknown as number),
+          raw: g,
+          homeTeam,
+          awayTeam,
+          gameDate: g.gameDate,
+          gameTime: g.gameTime,
+        };
+      })
+      .filter(g => g.homeTeam && g.awayTeam);
+  }, [games, teamIdToTeam, selectedWeek]);
 
-  // Load teams and games (with simple SPA-lifetime memoization)
+  // Load user's saved picks for selectedWeek
+  useEffect(() => {
+    if (!currentUser || !selectedWeek) return;
+    let active = true;
+    apiClient
+      .get<{ success: boolean; data?: any }>(`picks/${selectedWeek}`)
+      .then((res) => {
+        if (!active) return;
+        const data = res?.data;
+        if (data) {
+          const selections = (data.selections || {}) as Record<string, string>;
+          const mapped: Record<number, string> = {};
+          for (const [gid, team] of Object.entries(selections)) {
+            const n = Number(gid);
+            if (!Number.isNaN(n)) mapped[n] = team as string;
+          }
+          setPicks(mapped);
+          setLockOfWeek(data.lockOfWeek || "");
+          setTouchdownScorer(data.touchdownScorer || "");
+          setPropBet(data.propBet || "");
+          setPropBetOdds(data.propBetOdds || "");
+          setHasSubmitted(Boolean(data.isFinalized));
+        } else {
+          setPicks({});
+          setLockOfWeek("");
+          setTouchdownScorer("");
+          setPropBet("");
+          setPropBetOdds("");
+          setHasSubmitted(false);
+        }
+      })
+      .catch(() => {
+        setPicks({});
+        setHasSubmitted(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentUser, selectedWeek]);
+
   useEffect(() => {
     let active = true;
     const cachedTeams = memCache.get<ITeam[]>("teams");
@@ -118,7 +156,13 @@ const Picks = () => {
         .filter((n): n is string => Boolean(n))
         .map((n) => Number(n))
         .filter((n) => !Number.isNaN(n));
-      if (weekNums.length) setCurrentWeek(Math.min(...weekNums));
+      
+      if (weekNums.length) {
+        const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
+        setAvailableWeeks(uniqueWeeks);
+        setCurrentWeek(Math.min(...weekNums));
+        setSelectedWeek(Math.min(...weekNums));
+      }
       return () => {
         active = false;
       };
@@ -137,15 +181,18 @@ const Picks = () => {
         memCache.set("teams", teamList);
         memCache.set("games", gameList);
         setIsGamesLoading(false);
-        // Derive current week as the minimal week among games in the current season set
         const weekNums = gameList
           .map((g) => g.gameWeek)
           .map((w) => (typeof w === "string" ? w.match(/\d+/)?.[0] : undefined))
           .filter((n): n is string => Boolean(n))
           .map((n) => Number(n))
           .filter((n) => !Number.isNaN(n));
+        
         if (weekNums.length) {
+          const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
+          setAvailableWeeks(uniqueWeeks);
           setCurrentWeek(Math.min(...weekNums));
+          setSelectedWeek(Math.min(...weekNums));
         }
       })
       .catch(() => {
@@ -158,40 +205,50 @@ const Picks = () => {
     };
   }, []);
 
-  // Load existing picks if user has already submitted (placeholder, since mocks removed)
   useEffect(() => {
-    // TODO: integrate with real user picks API when available
     setHasSubmitted(false);
   }, [currentUser]);
 
-  // Fetch betting odds for games in current view
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
     const toFetch = joinedCurrentWeekGames
       .map((g) => g.raw.gameID)
       .filter((id): id is string => typeof id === "string" && id.length > 0)
-      .filter((id) => !oddsByGameId[id] && !memCache.get(`odds:${id}`));
+      .filter((id) => !memCache.get(`odds:${id}`));
+    
     if (toFetch.length === 0) return;
-    Promise.all(
-      toFetch.map((gameId) =>
-        apiClient
-          .get<BettingOddsResponse | ApiWrapped<BettingOddsResponse>>(
+
+    const processRequestsWithDelay = async () => {
+      const results: Array<{ gameId: string; res?: any }> = [];
+      
+      for (let i = 0; i < toFetch.length; i++) {
+        if (!active) break;
+        
+        const gameId = toFetch[i];
+        try {
+          const res = await apiClient.get<BettingOddsResponse | ApiWrapped<BettingOddsResponse>>(
             `betting-odds/${encodeURIComponent(gameId)}`,
             {
               signal: controller.signal,
             }
-          )
-          .then((res) => ({ gameId, res }))
-          .catch(() => ({ gameId, res: undefined }))
-      )
-    ).then((results) => {
+          );
+          results.push({ gameId, res });
+        } catch (error) {
+          results.push({ gameId, res: undefined });
+        }
+        
+        if (i < toFetch.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+      
       if (!active) return;
+      
       setOddsByGameId((prev) => {
         const next = { ...prev };
         for (const { gameId, res } of results) {
           if (!res) continue;
-          // Handle both plain document and ApiResponse-wrapped
           const payload = res as
             | BettingOddsResponse
             | ApiWrapped<BettingOddsResponse>;
@@ -212,12 +269,15 @@ const Picks = () => {
         }
         return next;
       });
-    });
+    };
+
+    processRequestsWithDelay();
+
     return () => {
       active = false;
       controller.abort();
     };
-  }, [joinedCurrentWeekGames, oddsByGameId]);
+  }, [joinedCurrentWeekGames]);
 
   const handlePickChange = (gameId: number, team: string) => {
     setPicks((prev) => ({
@@ -236,7 +296,6 @@ const Picks = () => {
   };
 
   const parseGameDateTime = (gameDate: string, gameTime: string) => {
-    // gameDate: "YYYYMMDD" (e.g., 20250904), gameTime: like "8:20p" or "1:00p"
     const yyyy = Number(gameDate.slice(0, 4));
     const mm = Number(gameDate.slice(4, 6));
     const dd = Number(gameDate.slice(6, 8));
@@ -252,7 +311,6 @@ const Picks = () => {
       if (meridiem === "p" && hours !== 12) hours += 12;
       if (meridiem === "a" && hours === 12) hours = 0;
     }
-    // Months are 0-based in JS Date
     return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
   };
 
@@ -268,38 +326,103 @@ const Picks = () => {
   };
 
   const isGameStarted = (gameDate: string, gameTime: string) => {
-    return parseGameDateTime(gameDate, gameTime) <= new Date();
+    const gameDateTime = parseGameDateTime(gameDate, gameTime);
+    const now = new Date();
+    const bufferMinutes = 15;
+    const cutoffTime = new Date(gameDateTime.getTime() + (bufferMinutes * 60 * 1000));
+    return now > cutoffTime;
   };
 
   const canSubmit = () => {
-    const requiredPicks = joinedCurrentWeekGames.length;
-    const submittedPicks = Object.keys(picks).length;
-    return (
-      submittedPicks === requiredPicks &&
-      lockOfWeek &&
-      touchdownScorer &&
-      propBet.trim() &&
-      propBetOdds.trim()
-    );
+    // Allow submission at any time; backend will store partial picks
+    return true;
   };
 
   const handleSubmit = async () => {
+    const weekToSave = selectedWeek ?? currentWeek;
+    if (!currentUser || !weekToSave) return;
     if (!canSubmit()) return;
-
     setIsSubmitting(true);
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const selections: Record<string, string> = {};
+    for (const [gid, team] of Object.entries(picks)) {
+      selections[String(gid)] = team as string;
+    }
 
-    setHasSubmitted(true);
-    setIsSubmitting(false);
+    try {
+      await apiClient.post<{ success: boolean; data?: any }>("picks", {
+        week: weekToSave,
+        selections,
+        lockOfWeek,
+        touchdownScorer,
+        propBet,
+        propBetOdds,
+        isFinalized: true,
+      });
+      setHasSubmitted(true);
+      // Clear all fields after submit
+      setPicks({});
+      setLockOfWeek("");
+      setTouchdownScorer("");
+      setPropBet("");
+      setPropBetOdds("");
+    } catch {
+      // Optionally show an error alert in future
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  // Fetch players from API with debounce; backend paginates to 20 per page and supports search
+  const handleSaveDraft = async () => {
+    const weekToSave = selectedWeek ?? currentWeek;
+    if (!currentUser || !weekToSave) return;
+    setIsSubmitting(true);
+    const selections: Record<string, string> = {};
+    for (const [gid, team] of Object.entries(picks)) selections[String(gid)] = team as string;
+    try {
+      await apiClient.post("picks", {
+        week: weekToSave,
+        selections,
+        lockOfWeek,
+        touchdownScorer,
+        propBet,
+        propBetOdds,
+        isFinalized: false,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeletePicks = async () => {
+    const weekToSave = selectedWeek ?? currentWeek;
+    if (!currentUser || !weekToSave) return;
+    setIsSubmitting(true);
+    try {
+      await apiClient.delete(`picks/${weekToSave}`);
+      setPicks({});
+      setLockOfWeek("");
+      setTouchdownScorer("");
+      setPropBet("");
+      setPropBetOdds("");
+      setHasSubmitted(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // players fetch effect remains
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
     const q = playerSearchValue.trim();
+    if (!playerSearchOpen || q.length < 2) {
+      setPlayers([]);
+      return () => {
+        active = false;
+        controller.abort();
+      };
+    }
     setPlayersLoading(true);
     setPlayersError(null);
     const t = setTimeout(() => {
@@ -312,11 +435,9 @@ const Picks = () => {
           const list = Array.isArray(res.data?.items) ? res.data.items! : [];
           setPlayers(list);
         })
-        .catch((err: unknown) => {
+        .catch(() => {
           if (!active) return;
-          const msg =
-            err instanceof Error ? err.message : "Failed to load players";
-          setPlayersError(msg);
+          setPlayersError("Failed to load players");
           setPlayers([]);
         })
         .finally(() => {
@@ -329,7 +450,7 @@ const Picks = () => {
       clearTimeout(t);
       controller.abort();
     };
-  }, [playerSearchValue]);
+  }, [playerSearchOpen, playerSearchValue]);
 
   return (
     <div className="space-y-6">
@@ -339,9 +460,30 @@ const Picks = () => {
           <h1 className="text-3xl font-bold text-foreground">
             Make Your Picks
           </h1>
-          <p className="text-muted-foreground mt-1">
-            Week {currentWeek ?? "-"} • {joinedCurrentWeekGames.length} games
-          </p>
+          <div className="flex items-center gap-4 mt-1">
+            <p className="text-muted-foreground">
+              Week {selectedWeek ?? "-"} • {joinedCurrentWeekGames.length} games
+            </p>
+            {availableWeeks.length > 1 && (
+              <div className="flex items-center gap-2">
+                <Label htmlFor="week-selector" className="text-sm text-muted-foreground">
+                  Select Week:
+                </Label>
+                <Select value={selectedWeek?.toString() || ""} onValueChange={(value) => setSelectedWeek(Number(value))}>
+                  <SelectTrigger className="w-24">
+                    <SelectValue placeholder="Week" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableWeeks.map((week) => (
+                      <SelectItem key={week} value={week.toString()}>
+                        Week {week}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
         </div>
         {hasSubmitted && (
           <Badge variant="default" className="text-sm">
@@ -721,14 +863,11 @@ const Picks = () => {
         </CardContent>
       </Card>
 
-      {/* Submit Button */}
-      <div className="flex justify-end">
-        <Button
-          onClick={handleSubmit}
-          disabled={!canSubmit() || isSubmitting}
-          size="lg"
-          className="min-w-32"
-        >
+      {/* Action buttons */}
+      <div className="flex gap-2 justify-end">
+        <Button variant="outline" onClick={handleSaveDraft} disabled={isSubmitting}>Save Draft</Button>
+        <Button variant="destructive" onClick={handleDeletePicks} disabled={isSubmitting}>Delete</Button>
+        <Button onClick={handleSubmit} disabled={isSubmitting} size="lg" className="min-w-32">
           {isSubmitting ? (
             <>
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
@@ -737,48 +876,11 @@ const Picks = () => {
           ) : (
             <>
               <Save className="mr-2 h-4 w-4" />
-              {hasSubmitted ? "Update Picks" : "Submit Picks"}
+              Submit Picks
             </>
           )}
         </Button>
       </div>
-
-      {/* Progress Indicator */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Progress</span>
-              <span>
-                {Object.keys(picks).length}/{joinedCurrentWeekGames.length}{" "}
-                games
-              </span>
-            </div>
-            <div className="w-full bg-secondary rounded-full h-2">
-              <div
-                className="bg-primary h-2 rounded-full transition-all duration-300"
-                style={{
-                  width: `${
-                    (Object.keys(picks).length /
-                      (joinedCurrentWeekGames.length || 1)) *
-                    100
-                  }%`,
-                }}
-              ></div>
-            </div>
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>
-                Spread picks: {Object.keys(picks).length > 0 ? "✓" : "○"}
-              </span>
-              <span>Lock of week: {lockOfWeek ? "✓" : "○"}</span>
-              <span>TD scorer: {touchdownScorer ? "✓" : "○"}</span>
-              <span>
-                Prop bet: {propBet.trim() && propBetOdds.trim() ? "✓" : "○"}
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 };
