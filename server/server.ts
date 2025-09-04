@@ -16,6 +16,7 @@ import {
   syncAllPlayers,
   syncBettingOddsForAllGames,
 } from "./src/modules/sync/sync.service.js";
+import { resolveWeek } from "./src/modules/scoring/scoring.service.js";
 
 const server = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -112,6 +113,18 @@ server.use(errorHandler);
       console.log(
         "[Scheduler] Weekly betting odds sync scheduled: 01:00 every Monday"
       );
+
+      // Schedule: Every 2 minutes, resolve current week outcomes
+      cron.schedule("*/2 * * * *", async () => {
+        try {
+          const { week } = await syncWeekGames();
+          await resolveWeek(week);
+          console.log(`[Scheduler] Resolved outcomes for week ${week}`);
+        } catch (err) {
+          console.error("[Scheduler] Failed resolving outcomes:", err);
+        }
+      });
+      console.log("[Scheduler] Outcome resolver scheduled: every 2 minutes");
     });
   } catch (error) {
     console.error("Error starting the server", error);

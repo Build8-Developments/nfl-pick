@@ -9,6 +9,10 @@ export interface IPick extends Document {
   propBet?: string;
   propBetOdds?: string;
   isFinalized?: boolean;
+  outcomes?: Record<string, boolean | null>; // gameId -> isCorrect
+  status?: string; // e.g., PENDING, SETTLED
+  propBetResolved?: boolean;
+  propBetCorrect?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -23,6 +27,10 @@ const PickSchema = new Schema<IPick>(
     propBet: { type: String },
     propBetOdds: { type: String },
     isFinalized: { type: Boolean, default: false },
+    outcomes: { type: Schema.Types.Mixed, default: {} },
+    status: { type: String, default: "PENDING" },
+    propBetResolved: { type: Boolean, default: false },
+    propBetCorrect: { type: Boolean, default: false },
   },
   { timestamps: true, collection: "picks" }
 );

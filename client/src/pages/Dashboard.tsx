@@ -1,4 +1,6 @@
 import { useAuth } from "../contexts/useAuth";
+import { useEffect, useState } from "react";
+import { apiClient } from "@/lib/api";
 import {
   Card,
   CardContent,
@@ -29,7 +31,14 @@ import {
 
 const Dashboard = () => {
   const { currentUser } = useAuth();
-  const currentWeek = 10;
+  const [currentWeek, setCurrentWeek] = useState<number>(10);
+  const [summary, setSummary] = useState<{ totalUsers: number; totalPicks: number; upcomingGames: Array<{ gameID: string; gameWeek: string; home: string; away: string; gameDate: string; gameTime: string }>; } | null>(null);
+
+  useEffect(() => {
+    apiClient.get<{ success?: boolean; data?: any }>("dashboard").then((res) => {
+      if (res?.data) setSummary(res.data as any);
+    }).catch(() => {});
+  }, []);
 
   // Get current user's picks for this week
   const userPicks = mockUserPicks.find(
@@ -105,7 +114,7 @@ const Dashboard = () => {
           <CardContent>
             <div className="text-2xl font-bold">Week {currentWeek}</div>
             <p className="text-xs text-muted-foreground">
-              {currentWeekGames.length} games
+              {summary?.upcomingGames?.length ?? 0} games
             </p>
           </CardContent>
         </Card>
@@ -155,10 +164,7 @@ const Dashboard = () => {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span>Spread Picks:</span>
-                    <span>
-                      {userPicks.picks.length} / {currentWeekGames.length} games
-                      submitted
-                    </span>
+                    <span>{userPicks.picks.length} submitted</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Lock of Week:</span>
