@@ -9,8 +9,10 @@ import type { ObjectId } from "mongoose";
 export const login = async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body as IUserLogin;
-
-    const user = await User.findOne({ username }).select("+passwordHash");
+    // Allow login by username OR email (identifier comes in username field)
+    const user = await User.findOne({
+      $or: [{ username }, { email: username }],
+    }).select("+passwordHash");
     if (!user) {
       return res
         .status(401)

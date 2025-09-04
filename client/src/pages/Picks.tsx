@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/useAuth";
 import {
   Card,
@@ -49,7 +50,8 @@ import { memCache } from "@/lib/memCache";
 
 const Picks = () => {
   const { currentUser } = useAuth();
-  const [picks, setPicks] = useState<Record<number, string>>({});
+  const navigate = useNavigate();
+  const [picks, setPicks] = useState<Record<string, string>>({});
   const [lockOfWeek, setLockOfWeek] = useState("");
   const [touchdownScorer, setTouchdownScorer] = useState("");
   const [propBet, setPropBet] = useState("");
@@ -70,6 +72,7 @@ const Picks = () => {
   const [, setPlayersLoading] = useState(false);
   const [, setPlayersError] = useState<string | null>(null);
   const [, setIsGamesLoading] = useState(true);
+  const isHydratingRef = useRef(false);
 
   type BettingOddsResponse = {
     odds?: { awayTeamSpread?: string; homeTeamSpread?: string };
@@ -91,7 +94,7 @@ const Picks = () => {
         const homeTeam = teamIdToTeam.get(g.teamIDHome);
         const awayTeam = teamIdToTeam.get(g.teamIDAway);
         return {
-          id: Number(g.gameID) || (g.gameID as unknown as number),
+          id: String(g.gameID),
           raw: g,
           homeTeam,
           awayTeam,
@@ -106,19 +109,22 @@ const Picks = () => {
   useEffect(() => {
     if (!currentUser || !selectedWeek) return;
     let active = true;
+    isHydratingRef.current = true;
     apiClient
-      .get<{ success: boolean; data?: any }>(`picks/${selectedWeek}`)
+      .get<{ success: boolean; data?: {
+        selections?: Record<string, string>;
+        lockOfWeek?: string;
+        touchdownScorer?: string;
+        propBet?: string;
+        propBetOdds?: string;
+        isFinalized?: boolean;
+      } | null }>(`picks/${selectedWeek}`)
       .then((res) => {
         if (!active) return;
         const data = res?.data;
         if (data) {
           const selections = (data.selections || {}) as Record<string, string>;
-          const mapped: Record<number, string> = {};
-          for (const [gid, team] of Object.entries(selections)) {
-            const n = Number(gid);
-            if (!Number.isNaN(n)) mapped[n] = team as string;
-          }
-          setPicks(mapped);
+          setPicks(selections);
           setLockOfWeek(data.lockOfWeek || "");
           setTouchdownScorer(data.touchdownScorer || "");
           setPropBet(data.propBet || "");
@@ -136,11 +142,19 @@ const Picks = () => {
       .catch(() => {
         setPicks({});
         setHasSubmitted(false);
+      })
+      .finally(() => {
+        // allow a tick to avoid immediate autosave right after hydration
+        setTimeout(() => {
+          isHydratingRef.current = false;
+        }, 0);
       });
     return () => {
       active = false;
     };
   }, [currentUser, selectedWeek]);
+
+  // Autosave removed: only explicit submit persists
 
   useEffect(() => {
     let active = true;
@@ -160,8 +174,23 @@ const Picks = () => {
       if (weekNums.length) {
         const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
         setAvailableWeeks(uniqueWeeks);
-        setCurrentWeek(Math.min(...weekNums));
-        setSelectedWeek(Math.min(...weekNums));
+        // Determine the most relevant week (current/upcoming if possible)
+        const now = new Date();
+        const weeksWithKickoffs = uniqueWeeks.map((wk) => {
+          const gamesForWeek = cachedGames.filter((g: IGame) => {
+            const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
+            return !Number.isNaN(num) && num === wk;
+          });
+          const firstUpcoming = gamesForWeek.some((g) => {
+            const dt = parseGameDateTime(g.gameDate as string, g.gameTime as string);
+            return now <= new Date(dt.getTime() + 15 * 60 * 1000);
+          });
+          return { wk, hasUpcoming: firstUpcoming };
+        });
+        const upcoming = weeksWithKickoffs.find((w) => w.hasUpcoming)?.wk;
+        const chosen = upcoming ?? Math.max(...uniqueWeeks);
+        setCurrentWeek(chosen);
+        setSelectedWeek(chosen);
       }
       return () => {
         active = false;
@@ -191,8 +220,23 @@ const Picks = () => {
         if (weekNums.length) {
           const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
           setAvailableWeeks(uniqueWeeks);
-          setCurrentWeek(Math.min(...weekNums));
-          setSelectedWeek(Math.min(...weekNums));
+          // Determine the most relevant week (current/upcoming if possible)
+          const now = new Date();
+          const weeksWithKickoffs = uniqueWeeks.map((wk) => {
+            const gamesForWeek = gameList.filter((g: IGame) => {
+              const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
+              return !Number.isNaN(num) && num === wk;
+            });
+            const firstUpcoming = gamesForWeek.some((g) => {
+              const dt = parseGameDateTime(g.gameDate as string, g.gameTime as string);
+              return now <= new Date(dt.getTime() + 15 * 60 * 1000);
+            });
+            return { wk, hasUpcoming: firstUpcoming };
+          });
+          const upcoming = weeksWithKickoffs.find((w) => w.hasUpcoming)?.wk;
+          const chosen = upcoming ?? Math.max(...uniqueWeeks);
+          setCurrentWeek(chosen);
+          setSelectedWeek(chosen);
         }
       })
       .catch(() => {
@@ -220,7 +264,7 @@ const Picks = () => {
     if (toFetch.length === 0) return;
 
     const processRequestsWithDelay = async () => {
-      const results: Array<{ gameId: string; res?: any }> = [];
+      const results: Array<{ gameId: string; res?: BettingOddsResponse | ApiWrapped<BettingOddsResponse> | undefined }> = [];
       
       for (let i = 0; i < toFetch.length; i++) {
         if (!active) break;
@@ -234,7 +278,7 @@ const Picks = () => {
             }
           );
           results.push({ gameId, res });
-        } catch (error) {
+        } catch {
           results.push({ gameId, res: undefined });
         }
         
@@ -249,9 +293,7 @@ const Picks = () => {
         const next = { ...prev };
         for (const { gameId, res } of results) {
           if (!res) continue;
-          const payload = res as
-            | BettingOddsResponse
-            | ApiWrapped<BettingOddsResponse>;
+          const payload = res as BettingOddsResponse | ApiWrapped<BettingOddsResponse>;
           let odds: BettingOddsResponse["odds"] | undefined;
           if (
             payload &&
@@ -279,7 +321,8 @@ const Picks = () => {
     };
   }, [joinedCurrentWeekGames]);
 
-  const handlePickChange = (gameId: number, team: string) => {
+  const handlePickChange = (gameId: string, team: string) => {
+    if (hasSubmitted) return;
     setPicks((prev) => ({
       ...prev,
       [gameId]: team,
@@ -290,6 +333,7 @@ const Picks = () => {
     playerId: string,
     playerName: string
   ) => {
+    if (hasSubmitted) return;
     setTouchdownScorer(playerId);
     setPlayerSearchValue(playerName);
     setPlayerSearchOpen(false);
@@ -333,10 +377,7 @@ const Picks = () => {
     return now > cutoffTime;
   };
 
-  const canSubmit = () => {
-    // Allow submission at any time; backend will store partial picks
-    return true;
-  };
+  const canSubmit = () => true;
 
   const handleSubmit = async () => {
     const weekToSave = selectedWeek ?? currentWeek;
@@ -344,21 +385,28 @@ const Picks = () => {
     if (!canSubmit()) return;
     setIsSubmitting(true);
 
-    const selections: Record<string, string> = {};
-    for (const [gid, team] of Object.entries(picks)) {
-      selections[String(gid)] = team as string;
-    }
+    const selections: Record<string, string> = { ...picks };
+
+    // Debug: print the exact payload being sent
+    const payload = {
+      week: weekToSave,
+      selections,
+      lockOfWeek,
+      touchdownScorer,
+      propBet,
+      propBetOdds,
+      isFinalized: true,
+    };
+    console.log("[PICKS] Submitting payload:", payload);
 
     try {
-      await apiClient.post<{ success: boolean; data?: any }>("picks", {
-        week: weekToSave,
-        selections,
-        lockOfWeek,
-        touchdownScorer,
-        propBet,
-        propBetOdds,
-        isFinalized: true,
-      });
+      console.log("[PICKS] Making API call to picks endpoint");
+      const res = await apiClient.post<{ success?: boolean; data?: unknown; message?: string }>("picks", payload);
+      console.log("[PICKS] Submit response:", res);
+      console.log("[PICKS] Response data type:", typeof res.data);
+      console.log("[PICKS] Response data value:", res.data);
+      console.log("[PICKS] Full response object keys:", Object.keys(res));
+      console.log("[PICKS] Raw response string:", JSON.stringify(res, null, 2));
       setHasSubmitted(true);
       // Clear all fields after submit
       setPicks({});
@@ -366,50 +414,19 @@ const Picks = () => {
       setTouchdownScorer("");
       setPropBet("");
       setPropBetOdds("");
-    } catch {
-      // Optionally show an error alert in future
+      navigate("/live-picks");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[PICKS] Submit failed:", message);
+      try {
+        alert(`Submit failed: ${message}`);
+      } catch {/* noop */}
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleSaveDraft = async () => {
-    const weekToSave = selectedWeek ?? currentWeek;
-    if (!currentUser || !weekToSave) return;
-    setIsSubmitting(true);
-    const selections: Record<string, string> = {};
-    for (const [gid, team] of Object.entries(picks)) selections[String(gid)] = team as string;
-    try {
-      await apiClient.post("picks", {
-        week: weekToSave,
-        selections,
-        lockOfWeek,
-        touchdownScorer,
-        propBet,
-        propBetOdds,
-        isFinalized: false,
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleDeletePicks = async () => {
-    const weekToSave = selectedWeek ?? currentWeek;
-    if (!currentUser || !weekToSave) return;
-    setIsSubmitting(true);
-    try {
-      await apiClient.delete(`picks/${weekToSave}`);
-      setPicks({});
-      setLockOfWeek("");
-      setTouchdownScorer("");
-      setPropBet("");
-      setPropBetOdds("");
-      setHasSubmitted(false);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  // Draft save/delete removed
 
   // players fetch effect remains
   useEffect(() => {
@@ -462,7 +479,7 @@ const Picks = () => {
           </h1>
           <div className="flex items-center gap-4 mt-1">
             <p className="text-muted-foreground">
-              Week {selectedWeek ?? "-"} • {joinedCurrentWeekGames.length} games
+              Week {selectedWeek ?? "-"} • {joinedCurrentWeekGames.filter(g => !isGameStarted(g.gameDate, g.gameTime)).length} games
             </p>
             {availableWeeks.length > 1 && (
               <div className="flex items-center gap-2">
@@ -505,14 +522,16 @@ const Picks = () => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {joinedCurrentWeekGames.map((game) => {
+            {joinedCurrentWeekGames
+              .filter((g) => !isGameStarted(g.gameDate, g.gameTime))
+              .map((game) => {
               const gameStarted = isGameStarted(game.gameDate, game.gameTime);
 
               return (
                 <div
                   key={game.id}
                   className={`p-4 border rounded-lg transition-all duration-200 hover:shadow-md ${
-                    gameStarted ? "bg-muted/50" : "hover:border-primary/50"
+                    gameStarted || hasSubmitted ? "bg-muted/50 opacity-60" : "hover:border-primary/50"
                   }`}
                 >
                   <div className="flex items-center justify-between mb-3">
@@ -524,7 +543,7 @@ const Picks = () => {
                         </Badge>
                       )}
                     </div>
-                    {gameStarted && (
+                    {(gameStarted || hasSubmitted) && (
                       <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                     )}
                   </div>
@@ -578,7 +597,7 @@ const Picks = () => {
                           (game.awayTeam?.teamAbv as string) || ""
                         )
                       }
-                      disabled={gameStarted}
+                      disabled={gameStarted || hasSubmitted}
                       style={{
                         backgroundColor:
                           picks[game.id] === game.awayTeam?.teamAbv
@@ -591,7 +610,7 @@ const Picks = () => {
                       }}
                       onMouseEnter={(e) => {
                         if (
-                          !gameStarted &&
+                          !gameStarted && !hasSubmitted &&
                           picks[game.id] !== game.awayTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "#00000010";
@@ -599,7 +618,7 @@ const Picks = () => {
                       }}
                       onMouseLeave={(e) => {
                         if (
-                          !gameStarted &&
+                          !gameStarted && !hasSubmitted &&
                           picks[game.id] !== game.awayTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "";
@@ -637,7 +656,7 @@ const Picks = () => {
                           (game.homeTeam?.teamAbv as string) || ""
                         )
                       }
-                      disabled={gameStarted}
+                      disabled={gameStarted || hasSubmitted}
                       style={{
                         backgroundColor:
                           picks[game.id] === game.homeTeam?.teamAbv
@@ -650,7 +669,7 @@ const Picks = () => {
                       }}
                       onMouseEnter={(e) => {
                         if (
-                          !gameStarted &&
+                          !gameStarted && !hasSubmitted &&
                           picks[game.id] !== game.homeTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "#00000010";
@@ -658,7 +677,7 @@ const Picks = () => {
                       }}
                       onMouseLeave={(e) => {
                         if (
-                          !gameStarted &&
+                          !gameStarted && !hasSubmitted &&
                           picks[game.id] !== game.homeTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "";
@@ -703,9 +722,9 @@ const Picks = () => {
               Choose your most confident pick for double points
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Select value={lockOfWeek} onValueChange={setLockOfWeek}>
-              <SelectTrigger>
+          <CardContent className={hasSubmitted ? "opacity-60" : undefined}>
+            <Select value={lockOfWeek} onValueChange={(v) => { if (hasSubmitted) return; setLockOfWeek(v); }}>
+              <SelectTrigger disabled={hasSubmitted}>
                 <SelectValue placeholder="Select your lock of the week" />
               </SelectTrigger>
               <SelectContent>
@@ -719,7 +738,7 @@ const Picks = () => {
                       : game.homeTeam;
 
                   return (
-                    <SelectItem key={game.id} value={`${game.id}-${userPick}`}>
+                    <SelectItem key={game.id} value={selectedTeam?.teamAbv || ""}>
                       <div className="flex items-center gap-2">
                         {selectedTeam?.espnLogo1 && (
                           <img
@@ -749,14 +768,15 @@ const Picks = () => {
               Pick a player to score a touchdown this week
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Popover open={playerSearchOpen} onOpenChange={setPlayerSearchOpen}>
+          <CardContent className={hasSubmitted ? "opacity-60" : undefined}>
+            <Popover open={playerSearchOpen} onOpenChange={(open) => { if (hasSubmitted) return; setPlayerSearchOpen(open); }}>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   role="combobox"
                   aria-expanded={playerSearchOpen}
                   className="w-full justify-between"
+                  disabled={hasSubmitted}
                 >
                   {playerSearchValue || "Search for a player..."}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -835,7 +855,7 @@ const Picks = () => {
             Submit a prop bet for admin approval
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className={hasSubmitted ? "opacity-60" : undefined}>
           <div className="space-y-2">
             <Label htmlFor="propBet">Prop Bet Description</Label>
             <Input
@@ -845,6 +865,7 @@ const Picks = () => {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 setPropBet(e.target.value)
               }
+              disabled={hasSubmitted}
             />
             <Label htmlFor="propBetOdds">Prop Bet Odds</Label>
             <Input
@@ -854,6 +875,7 @@ const Picks = () => {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 setPropBetOdds(e.target.value)
               }
+              disabled={hasSubmitted}
             />
             <p className="text-xs text-muted-foreground">
               Describe your prop bet clearly and provide the odds (e.g., +190,
@@ -865,9 +887,7 @@ const Picks = () => {
 
       {/* Action buttons */}
       <div className="flex gap-2 justify-end">
-        <Button variant="outline" onClick={handleSaveDraft} disabled={isSubmitting}>Save Draft</Button>
-        <Button variant="destructive" onClick={handleDeletePicks} disabled={isSubmitting}>Delete</Button>
-        <Button onClick={handleSubmit} disabled={isSubmitting} size="lg" className="min-w-32">
+        <Button onClick={handleSubmit} disabled={isSubmitting || hasSubmitted} size="lg" className="min-w-32">
           {isSubmitting ? (
             <>
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>

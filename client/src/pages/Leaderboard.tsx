@@ -19,28 +19,18 @@ import {
   Star,
   Award,
 } from "lucide-react";
-import { users, weeklyResults, scoringSystem } from "../data/mockData";
+import { useEffect } from "react";
+import { apiClient } from "@/lib/api";
 
 const Leaderboard = () => {
-  // Calculate season standings
-  const seasonStandings = users
-    .map((user) => ({
-      ...user,
-      totalPoints: weeklyResults.reduce((total, week) => {
-        const userResult = week.results.find((r) => r.userId === user.id);
-        return total + (userResult ? userResult.totalPoints : 0);
-      }, 0),
-      weeklyWins: weeklyResults.filter((week) => week.winner.id === user.id)
-        .length,
-      averagePoints:
-        weeklyResults.length > 0
-          ? weeklyResults.reduce((total, week) => {
-              const userResult = week.results.find((r) => r.userId === user.id);
-              return total + (userResult ? userResult.totalPoints : 0);
-            }, 0) / weeklyResults.length
-          : 0,
-    }))
-    .sort((a, b) => b.totalPoints - a.totalPoints);
+  type Row = { user: string; wins: number; losses: number; winPct: number };
+  const [seasonStandings, setSeasonStandings] = useState<Row[]>([]);
+  useEffect(() => {
+    apiClient
+      .get<{ success?: boolean; data?: Row[] }>("leaderboard")
+      .then((res) => setSeasonStandings(Array.isArray(res?.data) ? (res.data as Row[]) : []))
+      .catch(() => setSeasonStandings([]));
+  }, []);
 
   const getRankIcon = (rank: number) => {
     switch (rank) {
@@ -68,28 +58,8 @@ const Leaderboard = () => {
     setExpandedWeek(expandedWeek === week ? null : week);
   };
 
-  // Get weekly breakdown data
-  const weeklyBreakdown = weeklyResults
-    .map((week) => ({
-      ...week,
-      allResults: users
-        .map((user) => {
-          const result = week.results.find((r) => r.userId === user.id);
-          return {
-            user,
-            result: result || {
-              userId: user.id,
-              correctPicks: 0,
-              totalPoints: 0,
-              lockCorrect: false,
-              tdScorerCorrect: false,
-              propBetCorrect: false,
-            },
-          };
-        })
-        .sort((a, b) => b.result.totalPoints - a.result.totalPoints),
-    }))
-    .reverse(); // Show most recent first
+  // Weekly breakdown removed for now (no API yet)
+  const weeklyBreakdown: Array<{ week: number; allResults: any[]; winner: any }> = [];
 
   return (
     <div className="space-y-6">
@@ -124,7 +94,7 @@ const Leaderboard = () => {
               <div className="space-y-4">
                 {seasonStandings.map((user, index) => (
                   <div
-                    key={user.id}
+                    key={`${String(user.user)}-${index}`}
                     className="flex items-center justify-between p-4 rounded-lg border"
                   >
                     <div className="flex items-center gap-4">
@@ -138,20 +108,13 @@ const Leaderboard = () => {
                         </Badge>
                       </div>
                       <div>
-                        <div className="font-semibold text-lg">{user.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {user.weeklyWins} weekly wins •{" "}
-                          {user.averagePoints.toFixed(1)} avg points
-                        </div>
+                        <div className="font-semibold text-lg">{String(user.user).slice(0, 6)}</div>
+                        <div className="text-sm text-muted-foreground">{user.winPct.toFixed(2)}% win rate</div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-2xl font-bold">
-                        {user.totalPoints}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        total points
-                      </div>
+                      <div className="text-2xl font-bold">{user.wins}</div>
+                      <div className="text-sm text-muted-foreground">wins</div>
                     </div>
                   </div>
                 ))}
@@ -170,10 +133,10 @@ const Leaderboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {seasonStandings[0]?.name}
+                  {seasonStandings[0] ? String(seasonStandings[0].user).slice(0, 6) : ""}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {seasonStandings[0]?.weeklyWins} wins
+                  {seasonStandings[0]?.wins ?? 0} wins
                 </p>
               </CardContent>
             </Card>
@@ -187,17 +150,10 @@ const Leaderboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {
-                    seasonStandings.sort(
-                      (a, b) => b.averagePoints - a.averagePoints
-                    )[0]?.name
-                  }
+                  {seasonStandings.slice().sort((a, b) => b.winPct - a.winPct)[0]?.user}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {seasonStandings
-                    .sort((a, b) => b.averagePoints - a.averagePoints)[0]
-                    ?.averagePoints.toFixed(1)}{" "}
-                  avg
+                  {(seasonStandings.slice().sort((a, b) => b.winPct - a.winPct)[0]?.winPct ?? 0).toFixed(2)} win %
                 </p>
               </CardContent>
             </Card>
@@ -205,46 +161,7 @@ const Leaderboard = () => {
 
           </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Scoring System</CardTitle>
-                <CardDescription>
-                  How points are awarded each week
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center p-3 rounded-lg bg-muted">
-                    <div className="text-2xl font-bold">
-                      {scoringSystem.correctPick}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Correct Pick
-                    </div>
-                  </div>
-                  <div className="text-center p-3 rounded-lg bg-muted">
-                    <div className="text-2xl font-bold">
-                      {scoringSystem.correctLockOfWeek}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Lock of Week
-                    </div>
-                  </div>
-                  <div className="text-center p-3 rounded-lg bg-muted">
-                    <div className="text-2xl font-bold">
-                      {scoringSystem.correctTouchdownScorer}
-                    </div>
-                    <div className="text-sm text-muted-foreground">TD Scorer</div>
-                  </div>
-                  <div className="text-center p-3 rounded-lg bg-muted">
-                    <div className="text-2xl font-bold">
-                      {scoringSystem.correctPropBet}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Prop Bet</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Scoring System removed (no static mock) */}
 
             {/* User Stats Summary */}
             <Card>
@@ -256,14 +173,14 @@ const Leaderboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {seasonStandings.map((user) => (
-                    <div key={user.id} className="flex items-center justify-between p-3 rounded-lg border">
+                  {seasonStandings.map((user, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 rounded-lg border">
                       <div className="flex items-center gap-3">
                         <img src="/user_avatar.png" alt="User Avatar" className="h-8 w-8 rounded-full" />
-                        <div className="font-medium">{user.name}</div>
+                        <div className="font-medium">{String(user.user).slice(0, 6)}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm font-medium">{user.seasonRecord.percentage.toFixed(1)}%</div>
+                        <div className="text-sm font-medium">{user.winPct.toFixed(2)}%</div>
                         <div className="text-xs text-muted-foreground">Overall Pick %</div>
                       </div>
                     </div>

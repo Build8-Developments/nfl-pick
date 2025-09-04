@@ -110,9 +110,9 @@ export class ApiClient {
       throw error;
     }
 
-    return (
-      isJson ? await res.json() : ((await res.text()) as unknown)
-    ) as TResponse;
+    const responseData = isJson ? await res.json() : ((await res.text()) as unknown);
+    console.log("[API CLIENT] Raw response data:", responseData);
+    return responseData as TResponse;
   }
 
   async get<TResponse = unknown>(

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -8,6 +8,8 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   RefreshCw,
@@ -18,18 +20,57 @@ import {
 import { apiClient } from "@/lib/api";
 import type { ITeam } from "@/types/team.type";
 import type { IPlayer } from "@/types/player.type";
+import type { IGame } from "@/types/game.type";
 import { memCache } from "@/lib/memCache";
+import { useAuth } from "../contexts/useAuth";
 
 const LivePicks = () => {
+  useAuth();
   const [activeTab, setActiveTab] = useState("spreads");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [justUpdated, setJustUpdated] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedWeek] = useState(8);
+  const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
+  const [availableWeeks, setAvailableWeeks] = useState<number[]>([]);
   const [teams, setTeams] = useState<ITeam[]>([]);
   const [players, setPlayers] = useState<IPlayer[]>([]);
   const [loading, setLoading] = useState(true);
+  type BackendPick = {
+    _id: string;
+    user: { _id: string; username: string; avatar: string } | string;
+    week: number;
+    selections: Record<string, string>;
+    outcomes?: Record<string, boolean | null>;
+    lockOfWeek?: string;
+    touchdownScorer?: string;
+    propBet?: string;
+    propBetOdds?: string;
+    isFinalized?: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+  };
+  const [allPicks, setAllPicks] = useState<BackendPick[]>([]);
+  const isFetchingRef = useRef(false);
+  const lastFetchAtRef = useRef(0);
 
-  // Load data from APIs
+  const parseGameDateTime = (gameDate: string, gameTime: string) => {
+    const yyyy = Number(gameDate.slice(0, 4));
+    const mm = Number(gameDate.slice(4, 6));
+    const dd = Number(gameDate.slice(6, 8));
+    const m = gameTime.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
+    let hours = 12;
+    let minutes = 0;
+    if (m) {
+      hours = Number(m[1]);
+      minutes = m[2] ? Number(m[2]) : 0;
+      const meridiem = (m?.[3] ?? "a").toLowerCase();
+      if (meridiem === "p" && hours !== 12) hours += 12;
+      if (meridiem === "a" && hours === 12) hours = 0;
+    }
+    return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
+  };
+
+  // Load teams/players and infer current week from games cache if available
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -38,32 +79,156 @@ const LivePicks = () => {
 
         // Check cache first
         const cachedTeams = memCache.get<ITeam[]>("teams");
-        const cachedPlayers = memCache.get<IPlayer[]>("players");
+        // const cachedPlayers = memCache.get<IPlayer[]>("players");
+        const cachedGames = memCache.get<IGame[]>("games");
 
-        if (cachedTeams && cachedPlayers) {
+        if (cachedTeams) {
           setTeams(cachedTeams);
-          setPlayers(cachedPlayers);
+          if (cachedGames && cachedGames.length > 0) {
+            const weekNums = cachedGames
+              .map((g) => g.gameWeek)
+              .map((w) => (typeof w === "string" ? w.match(/\d+/)?.[0] : undefined))
+              .filter((n): n is string => Boolean(n))
+              .map((n) => Number(n))
+              .filter((n) => !Number.isNaN(n));
+            if (weekNums.length) {
+              const cachedWeeksWithPicks = memCache.get<number[]>("weeks:withPicks") || [];
+              const uniqueWeeks = [...new Set([...weekNums, ...cachedWeeksWithPicks])].sort((a, b) => a - b);
+              setAvailableWeeks(uniqueWeeks);
+              const now = new Date();
+              const weeksWithKickoffs = uniqueWeeks.map((wk) => {
+                const gamesForWeek = cachedGames.filter((g) => {
+                  const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
+                  return !Number.isNaN(num) && num === wk;
+                });
+                const hasUpcoming = gamesForWeek.some((g) => {
+                  const dt = parseGameDateTime(g.gameDate as string, g.gameTime as string);
+                  return now <= new Date(dt.getTime() + 15 * 60 * 1000);
+                });
+                return { wk, hasUpcoming };
+              });
+              const upcoming = weeksWithKickoffs.find((w) => w.hasUpcoming)?.wk;
+              const chosen = upcoming ?? Math.max(...uniqueWeeks);
+              setSelectedWeek(chosen);
+              // Fetch finalized-picks weeks in background and merge
+              apiClient
+                .get<{ success: boolean; data?: number[] }>("picks/weeks")
+                .then((res) => {
+                  const weeks = Array.isArray(res.data) ? res.data : [];
+                  memCache.set("weeks:withPicks", weeks);
+                  setAvailableWeeks((prev) => {
+                    const merged = [...new Set([...(prev || []), ...weeks])].sort((a, b) => a - b);
+                    return merged;
+                  });
+                })
+                .catch(() => {});
+            } else {
+              setSelectedWeek((prev) => prev ?? 1);
+            }
+            setLoading(false);
+            return;
+          }
+
+          // Teams cached but games not cached: fetch games to determine week
+          const gamesRes = await apiClient.get<{ success: boolean; data?: IGame[] }>("games");
+          const gameList = Array.isArray(gamesRes.data) ? (gamesRes.data as IGame[]) : [];
+          memCache.set("games", gameList);
+          if (gameList.length) {
+            const weekNums = gameList
+              .map((g) => g.gameWeek)
+              .map((w) => (typeof w === "string" ? w.match(/\d+/)?.[0] : undefined))
+              .filter((n): n is string => Boolean(n))
+              .map((n) => Number(n))
+              .filter((n) => !Number.isNaN(n));
+            if (weekNums.length) {
+              const cachedWeeksWithPicks = memCache.get<number[]>("weeks:withPicks") || [];
+              const uniqueWeeks = [...new Set([...weekNums, ...cachedWeeksWithPicks])].sort((a, b) => a - b);
+              setAvailableWeeks(uniqueWeeks);
+              const now = new Date();
+              const weeksWithKickoffs = uniqueWeeks.map((wk) => {
+                const gamesForWeek = gameList.filter((g) => {
+                  const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
+                  return !Number.isNaN(num) && num === wk;
+                });
+                const hasUpcoming = gamesForWeek.some((g) => {
+                  const dt = parseGameDateTime(g.gameDate as string, g.gameTime as string);
+                  return now <= new Date(dt.getTime() + 15 * 60 * 1000);
+                });
+                return { wk, hasUpcoming };
+              });
+              const upcoming = weeksWithKickoffs.find((w) => w.hasUpcoming)?.wk;
+              const chosen = upcoming ?? Math.max(...uniqueWeeks);
+              setSelectedWeek(chosen);
+              try {
+                const weeksRes = await apiClient.get<{ success: boolean; data?: number[] }>("picks/weeks");
+                const weeks = Array.isArray(weeksRes.data) ? weeksRes.data : [];
+                memCache.set("weeks:withPicks", weeks);
+                setAvailableWeeks((prev) => {
+                  const merged = [...new Set([...(prev || []), ...weeks])].sort((a, b) => a - b);
+                  return merged;
+                });
+              } catch {
+                // ignore
+              }
+            } else {
+              setSelectedWeek((prev) => prev ?? 1);
+            }
+          }
           setLoading(false);
           return;
         }
 
         // Fetch from API
-        const [teamsRes, playersRes] = await Promise.all([
+        const [teamsRes, playersRes, weeksRes] = await Promise.all([
           apiClient.get<{ success: boolean; data?: ITeam[] }>("teams"),
-          apiClient.get<{ success: boolean; data?: { items: IPlayer[] } }>("players", {
-            query: { limit: 100 } // Get more players for better selection
-          })
+          apiClient.get<{ success: boolean; data?: { items: IPlayer[] } }>("players", { query: { limit: 500 } }),
+          apiClient.get<{ success: boolean; data?: number[] }>("picks/weeks"),
         ]);
 
         const teamList = Array.isArray(teamsRes.data) ? teamsRes.data : [];
-        const playerList = Array.isArray(playersRes.data?.items) ? playersRes.data.items : [];
 
         setTeams(teamList);
+        const playerList = Array.isArray(playersRes.data?.items) ? playersRes.data.items : [];
         setPlayers(playerList);
 
         // Cache the results
         memCache.set("teams", teamList);
         memCache.set("players", playerList);
+        const weeksWithPicks = Array.isArray(weeksRes.data) ? weeksRes.data : [];
+        memCache.set("weeks:withPicks", weeksWithPicks);
+
+        const gamesRes = await apiClient.get<{ success: boolean; data?: IGame[] }>("games");
+        const gameList = Array.isArray(gamesRes.data) ? (gamesRes.data as IGame[]) : [];
+        memCache.set("games", gameList);
+        if (gameList.length) {
+          const weekNums = gameList
+            .map((g) => g.gameWeek)
+            .map((w) => (typeof w === "string" ? w.match(/\d+/)?.[0] : undefined))
+            .filter((n): n is string => Boolean(n))
+            .map((n) => Number(n))
+            .filter((n) => !Number.isNaN(n));
+          if (weekNums.length) {
+            const uniqueWeeks = [...new Set([...weekNums, ...weeksWithPicks])].sort((a, b) => a - b);
+            setAvailableWeeks(uniqueWeeks);
+            const now = new Date();
+            const weeksWithKickoffs = uniqueWeeks.map((wk) => {
+              const gamesForWeek = gameList.filter((g) => {
+                const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
+                return !Number.isNaN(num) && num === wk;
+              });
+              const hasUpcoming = gamesForWeek.some((g) => {
+                const dt = parseGameDateTime(g.gameDate as string, g.gameTime as string);
+                return now <= new Date(dt.getTime() + 15 * 60 * 1000);
+              });
+              return { wk, hasUpcoming };
+            });
+            const upcoming = weeksWithKickoffs.find((w) => w.hasUpcoming)?.wk;
+            const chosen = upcoming ?? Math.max(...uniqueWeeks);
+            setSelectedWeek(chosen);
+          } else {
+            setSelectedWeek((prev) => prev ?? 1);
+          }
+        }
 
       } catch (err) {
         console.error("Error loading data:", err);
@@ -75,6 +240,61 @@ const LivePicks = () => {
 
     loadData();
   }, []);
+
+  // Load all users' finalized picks for selected week
+  useEffect(() => {
+    if (!selectedWeek) return;
+    let active = true;
+    setIsRefreshing(true);
+    apiClient
+      .get<{ success?: boolean; data?: BackendPick[] }>(`picks/all/${selectedWeek}`)
+      .then((res) => {
+        if (!active) return;
+        setAllPicks(Array.isArray(res?.data) ? (res.data as BackendPick[]) : []);
+      })
+      .catch((err) => {
+        console.error("Error loading picks:", err);
+        if (!active) return;
+        setAllPicks([]);
+      })
+      .finally(() => {
+        if (!active) return;
+        setIsRefreshing(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedWeek]);
+
+  // Live SSE updates
+  useEffect(() => {
+    const streamUrl = `/api/v1/live-picks/stream`;
+    const es = new EventSource(streamUrl);
+    es.onmessage = () => {
+      if (!selectedWeek) return;
+      const now = Date.now();
+      // Debounce bursts (e.g., multiple events in quick succession)
+      if (now - lastFetchAtRef.current < 800) return;
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
+      lastFetchAtRef.current = now;
+      apiClient
+        .get<{ success?: boolean; data?: BackendPick[] }>(`picks/all/${selectedWeek}`)
+        .then((res) => {
+          setAllPicks(Array.isArray(res?.data) ? (res.data as BackendPick[]) : []);
+          setJustUpdated(true);
+          setTimeout(() => setJustUpdated(false), 2500);
+        })
+        .catch(() => {})
+        .finally(() => {
+          isFetchingRef.current = false;
+        });
+    };
+    es.onerror = () => {
+      es.close();
+    };
+    return () => es.close();
+  }, [selectedWeek]);
 
   // Simulate real-time updates
   useEffect(() => {
@@ -94,19 +314,13 @@ const LivePicks = () => {
       try {
         const [teamsRes, playersRes] = await Promise.all([
           apiClient.get<{ success: boolean; data?: ITeam[] }>("teams"),
-          apiClient.get<{ success: boolean; data?: { items: IPlayer[] } }>("players", {
-            query: { limit: 100 }
-          })
+          apiClient.get<{ success: boolean; data?: { items: IPlayer[] } }>("players", { query: { limit: 500 } }),
         ]);
-
         const teamList = Array.isArray(teamsRes.data) ? teamsRes.data : [];
-        const playerList = Array.isArray(playersRes.data?.items) ? playersRes.data.items : [];
-
         setTeams(teamList);
-        setPlayers(playerList);
-
-        // Update cache
         memCache.set("teams", teamList);
+        const playerList = Array.isArray(playersRes.data?.items) ? playersRes.data.items : [];
+        setPlayers(playerList);
         memCache.set("players", playerList);
 
       } catch (err) {
@@ -137,105 +351,59 @@ const LivePicks = () => {
     return avatars[index];
   };
 
-  // Helper function to get player headshot with fallback
+  // Player helpers
+  const getPlayerById = useCallback((id: string) => {
+    return players.find(p => String(p.playerID) === String(id));
+  }, [players]);
   const getPlayerHeadshot = (player: IPlayer | undefined) => {
     if (!player) return null;
-    
-    // Try ESPN headshot first, then fallback to placeholder
-    if (player.espnHeadshot && player.espnHeadshot.trim() !== "") {
-      return player.espnHeadshot;
-    }
-    
-    // Fallback to a generic player placeholder
+    if (player.espnHeadshot && player.espnHeadshot.trim() !== "") return player.espnHeadshot;
     return `https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=100&h=100&fit=crop&crop=face`;
   };
 
-  // Mock picks data using real team and player data
-  const mockPicksWithOutcomes = useMemo(() => {
-    if (teams.length === 0 || players.length === 0) return [];
+  // Transform backend picks for display using real data (no mocks)
+  type DisplayUserPicks = {
+    userId: string;
+    userName: string;
+    userAvatar: string;
+    picks: { team: string; isCorrect: boolean }[];
+    lock: { team: string; isCorrect: boolean };
+    tdScorer: { player: string; playerId: string; playerHeadshot: string | null; isCorrect: boolean };
+    propBet: { description: string; isCorrect: boolean };
+    totalPoints: number;
+  };
 
-    // Get some real teams and players for the mock data
-    const availableTeams = teams.slice(0, 16); // Get first 16 teams
-    const availablePlayers = players.filter(p => p.pos && ['QB', 'RB', 'WR', 'TE'].includes(p.pos)).slice(0, 20);
-
-    return [
-      {
-        userId: 1,
-        userName: "Luke",
-        userAvatar: getUserAvatar("Luke"),
-        picks: [
-          { team: availableTeams[0]?.teamAbv || "GB", isCorrect: true },
-          { team: availableTeams[1]?.teamAbv || "CAR", isCorrect: true },
-          { team: availableTeams[2]?.teamAbv || "NYJ", isCorrect: true },
-          { team: availableTeams[3]?.teamAbv || "TB", isCorrect: true },
-          { team: availableTeams[4]?.teamAbv || "MIN", isCorrect: false },
-          { team: availableTeams[5]?.teamAbv || "NYG", isCorrect: false },
-          { team: availableTeams[6]?.teamAbv || "PIT", isCorrect: false },
-          { team: availableTeams[7]?.teamAbv || "TEN", isCorrect: false },
-          { team: availableTeams[8]?.teamAbv || "ARI", isCorrect: false },
-        ],
-        lock: { team: availableTeams[3]?.teamAbv || "TB", isCorrect: true },
-        tdScorer: { 
-          player: availablePlayers[0]?.longName || "BARKLEY", 
-          playerId: availablePlayers[0]?.playerID || "1",
-          playerHeadshot: getPlayerHeadshot(availablePlayers[0]),
-          isCorrect: false 
+  const transformedPicks = useMemo<DisplayUserPicks[]>(() => {
+    const base = allPicks ? [...allPicks] : [];
+    if (base.length === 0) return [];
+    return base.map((p: BackendPick): DisplayUserPicks => {
+      const outcomesArray = Object.entries(p.selections || {}).map(([gid, team]) => {
+        const ok = p.outcomes ? p.outcomes[gid] : null;
+        return { team: team as string, isCorrect: ok === true };
+      });
+      const userId = typeof p.user === "string" ? p.user : p.user?._id || "unknown";
+      const userName = typeof p.user === "string" ? "User" : p.user?.username || "User";
+      const userAvatar =
+        typeof p.user === "string"
+          ? getUserAvatar("U")
+          : (p.user?.avatar || getUserAvatar(userName || "U"));
+      return {
+        userId,
+        userName,
+        userAvatar,
+        picks: outcomesArray,
+        lock: { team: (p.lockOfWeek as string) || "", isCorrect: false },
+        tdScorer: {
+          player: getPlayerById(p.touchdownScorer || "")?.longName || (p.touchdownScorer || ""),
+          playerId: p.touchdownScorer || "",
+          playerHeadshot: getPlayerHeadshot(getPlayerById(p.touchdownScorer || "")),
+          isCorrect: false,
         },
-        propBet: { description: `${availableTeams[5]?.teamAbv || "NYG"} 10+ 1H Points (+150)`, isCorrect: true },
-        totalPoints: 6,
-      },
-      {
-        userId: 2,
-        userName: "Mike",
-        userAvatar: getUserAvatar("Mike"),
-        picks: [
-          { team: availableTeams[9]?.teamAbv || "DET", isCorrect: false },
-          { team: availableTeams[1]?.teamAbv || "CAR", isCorrect: true },
-          { team: availableTeams[10]?.teamAbv || "MIA", isCorrect: false },
-          { team: availableTeams[3]?.teamAbv || "TB", isCorrect: true },
-          { team: availableTeams[11]?.teamAbv || "ATL", isCorrect: false },
-          { team: availableTeams[5]?.teamAbv || "NYG", isCorrect: false },
-          { team: availableTeams[6]?.teamAbv || "PIT", isCorrect: false },
-          { team: availableTeams[7]?.teamAbv || "TEN", isCorrect: false },
-          { team: availableTeams[8]?.teamAbv || "ARI", isCorrect: false },
-        ],
-        lock: { team: availableTeams[8]?.teamAbv || "ARI", isCorrect: false },
-        tdScorer: { 
-          player: availablePlayers[1]?.longName || "HENRY", 
-          playerId: availablePlayers[1]?.playerID || "2",
-          playerHeadshot: getPlayerHeadshot(availablePlayers[1]),
-          isCorrect: true 
-        },
-        propBet: { description: `${availablePlayers[2]?.longName || "Kupp"} O 5.5 Rec (-126)`, isCorrect: false },
-        totalPoints: 4,
-      },
-      {
-        userId: 3,
-        userName: "Gav",
-        userAvatar: getUserAvatar("Gav"),
-        picks: [
-          { team: availableTeams[9]?.teamAbv || "DET", isCorrect: false },
-          { team: availableTeams[12]?.teamAbv || "PHI", isCorrect: false },
-          { team: availableTeams[2]?.teamAbv || "NYJ", isCorrect: true },
-          { team: availableTeams[3]?.teamAbv || "TB", isCorrect: true },
-          { team: availableTeams[4]?.teamAbv || "MIN", isCorrect: false },
-          { team: availableTeams[13]?.teamAbv || "NO", isCorrect: true },
-          { team: availableTeams[14]?.teamAbv || "CLE", isCorrect: true },
-          { team: availableTeams[7]?.teamAbv || "TEN", isCorrect: false },
-          { team: availableTeams[15]?.teamAbv || "SEA", isCorrect: true },
-        ],
-        lock: { team: availableTeams[13]?.teamAbv || "NO", isCorrect: true },
-        tdScorer: { 
-          player: availablePlayers[3]?.longName || "WALKER", 
-          playerId: availablePlayers[3]?.playerID || "3",
-          playerHeadshot: getPlayerHeadshot(availablePlayers[3]),
-          isCorrect: true 
-        },
-        propBet: { description: `${availablePlayers[4]?.longName || "Chase"} 60+ Rec Yards (-185)`, isCorrect: false },
-        totalPoints: 3,
-      },
-    ];
-  }, [teams, players]);
+        propBet: { description: p.propBet || "", isCorrect: false },
+        totalPoints: 0,
+      };
+    });
+  }, [allPicks, getPlayerById]);
 
 
 
@@ -262,13 +430,36 @@ const LivePicks = () => {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Simplified Header (white background, black text) */}
+      {/* Header with week selector and manual refresh */}
       <div className="bg-white text-gray-900 px-4 py-4 border-b border-gray-200">
         <div className="flex items-center justify-between">
-          <div className="text-center flex-1">
-            <h1 className="text-xl font-bold text-black">
-              WEEK {selectedWeek}
-            </h1>
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-xl font-bold text-black">Live Picks</h1>
+              <p className="text-sm text-gray-600">Compare all users by week</p>
+            </div>
+            {availableWeeks.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Label htmlFor="week-selector" className="text-sm text-gray-700">
+                  Select Week:
+                </Label>
+                <Select value={selectedWeek?.toString() || ""} onValueChange={(value) => setSelectedWeek(Number(value))}>
+                  <SelectTrigger id="week-selector" className="w-28">
+                    <SelectValue placeholder="Week" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableWeeks.map((w) => (
+                      <SelectItem key={w} value={w.toString()}>
+                        Week {w}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {justUpdated && (
+                  <span className="ml-2 text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 border border-green-300">Updated</span>
+                )}
+              </div>
+            )}
           </div>
           <Button
             variant="ghost"
@@ -303,20 +494,20 @@ const LivePicks = () => {
         )}
 
         {/* No Data State */}
-        {!loading && mockPicksWithOutcomes.length === 0 && (
+        {!loading && transformedPicks.length === 0 && (
           <div className="text-center py-8">
             <p className="text-gray-600">No picks data available</p>
           </div>
         )}
 
         {/* Spreads: 3 user avatars as column headers, rows per game with larger logos */}
-        {!loading && mockPicksWithOutcomes.length > 0 && (
+        {!loading && transformedPicks.length > 0 && (
           <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl p-4 shadow-sm border border-gray-100">
             <h2 className="text-lg font-bold text-gray-800 mb-4">SPREADS</h2>
 
             {/* Header avatars aligned with columns */}
             <div className="grid grid-cols-3 gap-3 mb-4">
-              {mockPicksWithOutcomes.map((user) => (
+              {transformedPicks.map((user) => (
                 <div key={user.userId} className="flex items-center justify-center">
                   <img
                     src={user.userAvatar}
@@ -333,7 +524,7 @@ const LivePicks = () => {
 
             {/* Game rows: each cell shows the user's pick for that match */}
             {(() => {
-              const users = mockPicksWithOutcomes;
+              const users = transformedPicks;
               const maxGames = Math.max(...users.map((u) => u.picks.length));
               return (
                 <div className="space-y-3">
@@ -377,11 +568,11 @@ const LivePicks = () => {
         )}
 
         {/* Enhanced Lock Section */}
-        {!loading && mockPicksWithOutcomes.length > 0 && (
+        {!loading && transformedPicks.length > 0 && (
           <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-4 shadow-sm border border-yellow-100">
             <h2 className="text-lg font-bold text-gray-800 mb-4">LOCK OF THE WEEK</h2>
             <div className="grid grid-cols-3 gap-3">
-              {mockPicksWithOutcomes.map((user) => {
+              {transformedPicks.map((user) => {
                 const teamLogo = getTeamLogo(user.lock.team);
                 return (
                   <div
@@ -416,11 +607,11 @@ const LivePicks = () => {
         )}
 
         {/* Enhanced TD Scorer Section */}
-        {!loading && mockPicksWithOutcomes.length > 0 && (
+        {!loading && transformedPicks.length > 0 && (
           <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 shadow-sm border border-green-100">
             <h2 className="text-lg font-bold text-gray-800 mb-4">TOUCHDOWN SCORER</h2>
             <div className="grid grid-cols-3 gap-4">
-              {mockPicksWithOutcomes.map((user) => (
+              {transformedPicks.map((user) => (
                 <div key={user.userId} className="text-center">
                   <div className="relative bg-white rounded-xl p-3 shadow-md border border-gray-100">
                     <div className="flex flex-col items-center gap-2">
@@ -463,11 +654,11 @@ const LivePicks = () => {
         )}
 
                 {/* Enhanced Prop Bet Section */}
-        {!loading && mockPicksWithOutcomes.length > 0 && (
+        {!loading && transformedPicks.length > 0 && (
           <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-4 shadow-sm border border-purple-100">
             <h2 className="text-lg font-bold text-gray-800 mb-4">PROP BETS</h2>
             <div className="space-y-3">
-              {mockPicksWithOutcomes.map((user) => (
+              {transformedPicks.map((user) => (
                 <div key={user.userId} className="relative">
                   <div className="bg-white p-4 rounded-xl shadow-md border border-gray-100">
                     <div className="flex items-center gap-3">
@@ -481,7 +672,7 @@ const LivePicks = () => {
                         }}
                       />
                       <div className="flex-1">
-                        <p className="text-sm font-semibold text-gray-800">{user.propBet.description}</p>
+                        <p className="text-sm font-semibold text-gray-800">{user.propBet.description || "—"}</p>
                         <p className="text-xs text-gray-500 mt-1">{user.userName}</p>
                       </div>
                     </div>
@@ -504,11 +695,11 @@ const LivePicks = () => {
         )}
 
                 {/* Enhanced Total Points Section */}
-        {!loading && mockPicksWithOutcomes.length > 0 && (
+        {!loading && transformedPicks.length > 0 && (
           <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-4 shadow-sm border border-blue-100">
             <h2 className="text-lg font-bold text-gray-800 mb-4">TOTAL POINTS</h2>
             <div className="grid grid-cols-3 gap-4">
-              {mockPicksWithOutcomes.map((user, index) => {
+              {transformedPicks.map((user, index) => {
                 const isLeader = index === 0; // First user is leader
                 return (
                   <div key={user.userId} className="text-center">
@@ -569,13 +760,13 @@ const LivePicks = () => {
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
                   <p className="text-gray-600 mt-2">Loading picks...</p>
                 </div>
-              ) : mockPicksWithOutcomes.length === 0 ? (
+              ) : transformedPicks.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-gray-600">No picks data available</p>
                 </div>
               ) : (
               <div className="space-y-4">
-                    {mockPicksWithOutcomes.map((user) => (
+                    {transformedPicks.map((user) => (
                       <div key={user.userId} className="p-4 border rounded-lg">
                         <div className="flex items-center gap-3 mb-3">
                           <img
@@ -645,13 +836,13 @@ const LivePicks = () => {
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
                       <p className="text-gray-600 mt-2">Loading picks...</p>
                     </div>
-                  ) : mockPicksWithOutcomes.length === 0 ? (
+                  ) : transformedPicks.length === 0 ? (
                     <div className="text-center py-8">
                       <p className="text-gray-600">No picks data available</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {mockPicksWithOutcomes.map((user) => {
+                      {transformedPicks.map((user) => {
                         return (
                           <div key={user.userId} className="p-4 border rounded-lg text-center">
                                                       <div className="flex items-center justify-center gap-2 mb-2">
@@ -708,13 +899,13 @@ const LivePicks = () => {
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
                   <p className="text-gray-600 mt-2">Loading picks...</p>
                           </div>
-              ) : mockPicksWithOutcomes.length === 0 ? (
+              ) : transformedPicks.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-gray-600">No picks data available</p>
                             </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {mockPicksWithOutcomes.map((user) => (
+                  {transformedPicks.map((user) => (
                     <div key={user.userId} className="text-center">
                       <div className="flex items-center justify-center gap-2 mb-3">
                         <img
@@ -767,13 +958,13 @@ const LivePicks = () => {
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
                   <p className="text-gray-600 mt-2">Loading picks...</p>
                           </div>
-              ) : mockPicksWithOutcomes.length === 0 ? (
+              ) : transformedPicks.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-gray-600">No picks data available</p>
                               </div>
                             ) : (
                 <div className="space-y-4">
-                  {mockPicksWithOutcomes.map((user) => (
+                  {transformedPicks.map((user) => (
                     <div key={user.userId} className="p-4 border rounded-lg relative">
                                               <div className="flex items-center gap-3 mb-2">
                           <img

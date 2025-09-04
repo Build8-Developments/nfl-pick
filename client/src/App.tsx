@@ -13,6 +13,7 @@ import Picks from "./pages/Picks.tsx";
 import Leaderboard from "./pages/Leaderboard.tsx";
 import Admin from "./pages/Admin.tsx";
 import LivePicks from "./pages/LivePicks.tsx";
+import Results from "./pages/Results.tsx";
 import "./App.css";
 import ApiExample from "./components/ApiExample.tsx";
 
@@ -53,6 +54,7 @@ function App() {
             <Route path="leaderboard" element={<Leaderboard />} />
             <Route path="admin" element={<Admin />} />
             <Route path="live-picks" element={<LivePicks />} />
+            <Route path="results" element={<Results />} />
             {/* Example usage of centralized API client */}
             <Route path="api-example" element={<ApiExample />} />
           </Route>
