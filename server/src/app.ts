@@ -15,6 +15,7 @@ import leaderboardRouter from "./modules/leaderboard/leaderboard.route.js";
 import adminRouter from "./modules/admin/admin.route.js";
 import dashboardRouter from "./modules/dashboard/dashboard.route.js";
 import uploadRouter from "./modules/uploads/upload.route.js";
+import liveScoringRouter from "./modules/live-scoring/liveScoring.route.js";
 
 const app = express.Router();
 
@@ -25,6 +26,15 @@ app.get("/health", protectAdmin, (req: Request, res: Response) => {
     uptime: `${process.uptime()} seconds`,
     memory: `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`,
     nodeVersion: process.version,
+  });
+});
+
+// Public CORS test endpoint
+app.get("/cors-test", (req: Request, res: Response) => {
+  res.status(200).json({
+    message: "CORS is working!",
+    origin: req.headers.origin,
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -64,6 +74,9 @@ app.use("/admin", adminRouter);
 
 // Dashboard summary
 app.use("/dashboard", dashboardRouter);
+
+// Live scoring
+app.use("/live-scoring", liveScoringRouter);
 
 app.use((req: Request, res: Response) => {
   res.status(404).json(ApiResponse.error(`Route ${req.originalUrl} not found`));

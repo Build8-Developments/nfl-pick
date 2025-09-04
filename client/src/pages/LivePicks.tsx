@@ -35,6 +35,7 @@ const LivePicks = () => {
   const [availableWeeks, setAvailableWeeks] = useState<number[]>([]);
   const [teams, setTeams] = useState<ITeam[]>([]);
   const [players, setPlayers] = useState<IPlayer[]>([]);
+  const [games, setGames] = useState<IGame[]>([]);
   const [loading, setLoading] = useState(true);
   type BackendPick = {
     _id: string;
@@ -51,6 +52,10 @@ const LivePicks = () => {
     updatedAt?: string;
   };
   const [allPicks, setAllPicks] = useState<BackendPick[]>([]);
+  const [hasCurrentUserSubmitted, setHasCurrentUserSubmitted] = useState(false);
+  const [oddsByGameId, setOddsByGameId] = useState<
+    Record<string, { awayTeamSpread?: string; homeTeamSpread?: string }>
+  >({});
   const isFetchingRef = useRef(false);
   const lastFetchAtRef = useRef(0);
 
@@ -86,6 +91,7 @@ const LivePicks = () => {
         if (cachedTeams) {
           setTeams(cachedTeams);
           if (cachedGames && cachedGames.length > 0) {
+            setGames(cachedGames);
             const weekNums = cachedGames
               .map((g) => g.gameWeek)
               .map((w) =>
@@ -150,6 +156,7 @@ const LivePicks = () => {
           const gameList = Array.isArray(gamesRes.data)
             ? (gamesRes.data as IGame[])
             : [];
+          setGames(gameList);
           memCache.set("games", gameList);
           if (gameList.length) {
             const weekNums = gameList
@@ -244,6 +251,7 @@ const LivePicks = () => {
         const gameList = Array.isArray(gamesRes.data)
           ? (gamesRes.data as IGame[])
           : [];
+        setGames(gameList);
         memCache.set("games", gameList);
         if (gameList.length) {
           const weekNums = gameList
@@ -292,6 +300,29 @@ const LivePicks = () => {
     loadData();
   }, []);
 
+  // Load current user's picks to check if they've submitted
+  useEffect(() => {
+    if (!selectedWeek) return;
+    let active = true;
+    apiClient
+      .get<{ success?: boolean; data?: BackendPick | null }>(
+        `picks/${selectedWeek}`
+      )
+      .then((res) => {
+        if (!active) return;
+        const userPicks = res?.data;
+        setHasCurrentUserSubmitted(Boolean(userPicks?.isFinalized));
+      })
+      .catch((err) => {
+        console.error("Error loading current user picks:", err);
+        if (!active) return;
+        setHasCurrentUserSubmitted(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedWeek]);
+
   // Load all users' finalized picks for selected week
   useEffect(() => {
     if (!selectedWeek) return;
@@ -321,48 +352,104 @@ const LivePicks = () => {
     };
   }, [selectedWeek]);
 
-  // Live SSE updates
+  // Live SSE updates with better error handling
   useEffect(() => {
     const streamUrl = `/api/v1/live-picks/stream`;
-    const es = new EventSource(streamUrl);
-    es.onmessage = () => {
-      if (!selectedWeek) return;
-      const now = Date.now();
-      // Debounce bursts (e.g., multiple events in quick succession)
-      if (now - lastFetchAtRef.current < 800) return;
-      if (isFetchingRef.current) return;
-      isFetchingRef.current = true;
-      lastFetchAtRef.current = now;
-      apiClient
-        .get<{ success?: boolean; data?: BackendPick[] }>(
-          `picks/all/${selectedWeek}`
-        )
-        .then((res) => {
-          setAllPicks(
-            Array.isArray(res?.data) ? (res.data as BackendPick[]) : []
-          );
-          setJustUpdated(true);
-          setTimeout(() => setJustUpdated(false), 2500);
-        })
-        .catch(() => {})
-        .finally(() => {
-          isFetchingRef.current = false;
-        });
+    let es: EventSource | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
+
+    const connect = () => {
+      try {
+        es = new EventSource(streamUrl);
+        
+        es.onopen = () => {
+          console.log('SSE connection opened');
+          reconnectAttempts = 0;
+        };
+
+        es.onmessage = () => {
+          if (!selectedWeek) return;
+          const now = Date.now();
+          // Debounce bursts (e.g., multiple events in quick succession)
+          if (now - lastFetchAtRef.current < 800) return;
+          if (isFetchingRef.current) return;
+          isFetchingRef.current = true;
+          lastFetchAtRef.current = now;
+          apiClient
+            .get<{ success?: boolean; data?: BackendPick[] }>(
+              `picks/all/${selectedWeek}`
+            )
+            .then((res) => {
+              setAllPicks(
+                Array.isArray(res?.data) ? (res.data as BackendPick[]) : []
+              );
+              setJustUpdated(true);
+              setTimeout(() => setJustUpdated(false), 2500);
+            })
+            .catch(() => {})
+            .finally(() => {
+              isFetchingRef.current = false;
+            });
+        };
+
+        es.onerror = (error) => {
+          console.warn('SSE connection error:', error);
+          es?.close();
+          es = null;
+          
+          // Attempt to reconnect with exponential backoff
+          if (reconnectAttempts < maxReconnectAttempts) {
+            reconnectAttempts++;
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+            console.log(`Attempting to reconnect SSE in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
+            reconnectTimeout = setTimeout(connect, delay);
+          } else {
+            console.warn('Max SSE reconnection attempts reached, giving up');
+          }
+        };
+      } catch (error) {
+        console.error('Failed to create SSE connection:', error);
+      }
     };
-    es.onerror = () => {
-      es.close();
+
+    connect();
+
+    return () => {
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      if (es) {
+        es.close();
+      }
     };
-    return () => es.close();
   }, [selectedWeek]);
 
-  // Simulate real-time updates
+  // Fallback polling when SSE fails
   useEffect(() => {
     const interval = setInterval(() => {
-      // Update every 30 seconds
-    }, 30000);
+      if (!selectedWeek) return;
+      // Only poll if we haven't received updates recently
+      const now = Date.now();
+      if (now - lastFetchAtRef.current > 60000) { // 1 minute since last update
+        apiClient
+          .get<{ success?: boolean; data?: BackendPick[] }>(
+            `picks/all/${selectedWeek}`
+          )
+          .then((res) => {
+            setAllPicks(
+              Array.isArray(res?.data) ? (res.data as BackendPick[]) : []
+            );
+          })
+          .catch(() => {
+            // Silently fail for polling
+          });
+      }
+    }, 30000); // Poll every 30 seconds
 
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedWeek]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -491,8 +578,68 @@ const LivePicks = () => {
     totalPoints: number;
   };
 
+  // Fetch betting odds for games
+  useEffect(() => {
+    if (!selectedWeek || !games.length) return;
+    
+    const currentWeekGames = games.filter((g) => {
+      const weekNum = Number(g.gameWeek.match(/\d+/)?.[0] ?? NaN);
+      return !Number.isNaN(weekNum) && weekNum === selectedWeek;
+    });
+
+    // Only fetch odds for games we don't already have
+    const gamesToFetch = currentWeekGames.filter(game => !oddsByGameId[game.gameID]);
+
+    if (gamesToFetch.length === 0) return;
+
+    const fetchOdds = async () => {
+      for (let i = 0; i < gamesToFetch.length; i++) {
+        const game = gamesToFetch[i];
+        let retryCount = 0;
+        const maxRetries = 2;
+        
+        while (retryCount <= maxRetries) {
+          try {
+            const res = await apiClient.get<{
+              success: boolean;
+              data?: { odds?: { awayTeamSpread?: string; homeTeamSpread?: string } };
+            }>(`betting-odds/${encodeURIComponent(game.gameID)}`);
+            
+            // Check if response exists and has data with odds
+            if (res && res.data && res.data.odds) {
+              setOddsByGameId(prev => ({
+                ...prev,
+                [game.gameID]: res.data!.odds!
+              }));
+              break; // Success, exit retry loop
+            } else {
+              // No odds data available, don't retry
+              break;
+            }
+          } catch (err) {
+            retryCount++;
+            if (retryCount <= maxRetries) {
+              console.warn(`Retrying odds fetch for game ${game.gameID} (attempt ${retryCount}/${maxRetries})`);
+              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+            } else {
+              console.error(`Failed to fetch odds for game ${game.gameID} after ${maxRetries} retries:`, err);
+            }
+          }
+        }
+        
+        // Add a small delay between requests to avoid overwhelming the API
+        if (i < gamesToFetch.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      }
+    };
+
+    fetchOdds();
+  }, [selectedWeek, games, oddsByGameId]);
+
   const transformedPicks = useMemo<DisplayUserPicks[]>(() => {
-    const base = allPicks ? [...allPicks] : [];
+    // Only show other users' picks if current user has submitted
+    const base = hasCurrentUserSubmitted ? (allPicks ? [...allPicks] : []) : [];
     if (base.length === 0) return [];
     return base.map((p: BackendPick): DisplayUserPicks => {
       const outcomesArray = Object.entries(p.selections || {}).map(
@@ -533,7 +680,7 @@ const LivePicks = () => {
         totalPoints: 0,
       };
     });
-  }, [allPicks, getPlayerById, getUserAvatar, playerData]);
+  }, [allPicks, getPlayerById, getUserAvatar, playerData, hasCurrentUserSubmitted]);
 
   // Fetch player data for TD scorers when picks are loaded
   useEffect(() => {
@@ -645,7 +792,24 @@ const LivePicks = () => {
         {/* No Data State */}
         {!loading && transformedPicks.length === 0 && (
           <div className="text-center py-8">
-            <p className="text-gray-600">No picks data available</p>
+            {!hasCurrentUserSubmitted ? (
+              <div className="space-y-4">
+                <p className="text-gray-600 text-lg font-medium">
+                  Submit your picks to see other players' picks
+                </p>
+                <p className="text-gray-500">
+                  Once you submit your picks for this week, you'll be able to see how other players are doing.
+                </p>
+                <Button 
+                  onClick={() => window.location.href = '/picks'}
+                  className="mt-4"
+                >
+                  Go to Make Picks
+                </Button>
+              </div>
+            ) : (
+              <p className="text-gray-600">No picks data available</p>
+            )}
           </div>
         )}
 
@@ -680,44 +844,89 @@ const LivePicks = () => {
               const maxGames = Math.max(...users.map((u) => u.picks.length));
               return (
                 <div className="space-y-3">
-                  {Array.from({ length: maxGames }).map((_, gameIdx) => (
-                    <div key={gameIdx} className="grid grid-cols-3 gap-3">
-                      {users.map((user) => {
-                        const pick = user.picks[gameIdx];
-                        if (!pick) {
+                  {Array.from({ length: maxGames }).map((_, gameIdx) => {
+                    // Get the game info for this row to show spreads
+                    const gameId = Object.keys(users[0]?.picks || {})[gameIdx];
+                    const game = games.find(g => String(g.gameID) === gameId);
+                    const odds = game ? oddsByGameId[game.gameID] : null;
+                    
+                    return (
+                      <div key={gameIdx}>
+                        {/* Game info with spreads */}
+                        {game && (() => {
+                          const awayTeam = teams.find(t => t.teamID === game.teamIDAway);
+                          const homeTeam = teams.find(t => t.teamID === game.teamIDHome);
                           return (
-                            <div
-                              key={user.userId}
-                              className="h-16 rounded-xl bg-gray-100 border border-gray-200"
-                            />
+                            <div className="mb-2 p-2 bg-gray-50 rounded-lg">
+                              <div className="flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-2">
+                                  <img
+                                    src={getTeamLogo(awayTeam?.teamAbv || "")}
+                                    alt={awayTeam?.teamAbv}
+                                    className="w-4 h-4 rounded-full"
+                                  />
+                                  <span className="font-medium">{awayTeam?.teamAbv}</span>
+                                  <span className="text-gray-500">
+                                    {odds?.awayTeamSpread || "PK"}
+                                  </span>
+                                </div>
+                                <span className="text-gray-400">@</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-gray-500">
+                                    {odds?.homeTeamSpread || "PK"}
+                                  </span>
+                                  <span className="font-medium">{homeTeam?.teamAbv}</span>
+                                  <img
+                                    src={getTeamLogo(homeTeam?.teamAbv || "")}
+                                    alt={homeTeam?.teamAbv}
+                                    className="w-4 h-4 rounded-full"
+                                  />
+                                </div>
+                              </div>
+                            </div>
                           );
-                        }
-                        const teamLogo = getTeamLogo(pick.team);
-                        // Use navy blue colors by default
-                        const bgClass = "bg-blue-900 text-white";
-                        const borderClass = "border-blue-800";
-                        return (
-                          <div
-                            key={user.userId}
-                            className={`${bgClass} p-3 rounded-xl text-center font-bold text-sm shadow-md border-2 ${borderClass} flex flex-col items-center justify-center`}
-                          >
-                            <img
-                              src={teamLogo}
-                              alt={pick.team}
-                              className="w-10 h-10 rounded-full object-cover mb-1"
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                target.style.display = "none";
-                              }}
-                            />
-                            <span className="text-xs font-bold">
-                              {pick.team}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
+                        })()}
+                        
+                        {/* User picks */}
+                        <div className="grid grid-cols-3 gap-3">
+                          {users.map((user) => {
+                            const pick = user.picks[gameIdx];
+                            if (!pick) {
+                              return (
+                                <div
+                                  key={user.userId}
+                                  className="h-16 rounded-xl bg-gray-100 border border-gray-200"
+                                />
+                              );
+                            }
+                            const teamLogo = getTeamLogo(pick.team);
+                            // Use navy blue colors by default
+                            const bgClass = "bg-blue-900 text-white";
+                            const borderClass = "border-blue-800";
+                            return (
+                              <div
+                                key={user.userId}
+                                className={`${bgClass} p-3 rounded-xl text-center font-bold text-sm shadow-md border-2 ${borderClass} flex flex-col items-center justify-center`}
+                              >
+                                <img
+                                  src={teamLogo}
+                                  alt={pick.team}
+                                  className="w-10 h-10 rounded-full object-cover mb-1"
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = "none";
+                                  }}
+                                />
+                                <span className="text-xs font-bold">
+                                  {pick.team}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })()}

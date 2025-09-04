@@ -79,6 +79,25 @@ const Picks = () => {
   };
   type ApiWrapped<T> = { success?: boolean; data?: T };
 
+  const parseGameDateTime = (gameDate: string, gameTime: string) => {
+    const yyyy = Number(gameDate.slice(0, 4));
+    const mm = Number(gameDate.slice(4, 6));
+    const dd = Number(gameDate.slice(6, 8));
+    const timeMatch = gameTime
+      .trim()
+      .match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
+    let hours = 12;
+    let minutes = 0;
+    if (timeMatch) {
+      hours = Number(timeMatch[1]);
+      minutes = timeMatch[2] ? Number(timeMatch[2]) : 0;
+      const meridiem = timeMatch[3].toLowerCase();
+      if (meridiem === "p" && hours !== 12) hours += 12;
+      if (meridiem === "a" && hours === 12) hours = 0;
+    }
+    return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
+  };
+
   const teamIdToTeam = useMemo(() => {
     return new Map<string, ITeam>(teams.map((t) => [t.teamID, t]));
   }, [teams]);
@@ -102,7 +121,13 @@ const Picks = () => {
           gameTime: g.gameTime,
         };
       })
-      .filter(g => g.homeTeam && g.awayTeam);
+      .filter(g => g.homeTeam && g.awayTeam)
+      .sort((a, b) => {
+        // Sort by game date and time
+        const dateA = parseGameDateTime(a.gameDate, a.gameTime);
+        const dateB = parseGameDateTime(b.gameDate, b.gameTime);
+        return dateA.getTime() - dateB.getTime();
+      });
   }, [games, teamIdToTeam, selectedWeek]);
 
   // Load user's saved picks for selectedWeek
@@ -322,40 +347,30 @@ const Picks = () => {
   }, [joinedCurrentWeekGames]);
 
   const handlePickChange = (gameId: string, team: string) => {
-    if (hasSubmitted) return;
-    setPicks((prev) => ({
-      ...prev,
-      [gameId]: team,
-    }));
+    if (!canEditPicks()) return;
+    setPicks((prev) => {
+      // If clicking the same team that's already selected, deselect it
+      if (prev[gameId] === team) {
+        const newPicks = { ...prev };
+        delete newPicks[gameId];
+        return newPicks;
+      }
+      // Otherwise, select the team
+      return {
+        ...prev,
+        [gameId]: team,
+      };
+    });
   };
 
   const handleTouchdownScorerSelect = (
     playerId: string,
     playerName: string
   ) => {
-    if (hasSubmitted) return;
+    if (!canEditPicks()) return;
     setTouchdownScorer(playerId);
     setPlayerSearchValue(playerName);
     setPlayerSearchOpen(false);
-  };
-
-  const parseGameDateTime = (gameDate: string, gameTime: string) => {
-    const yyyy = Number(gameDate.slice(0, 4));
-    const mm = Number(gameDate.slice(4, 6));
-    const dd = Number(gameDate.slice(6, 8));
-    const timeMatch = gameTime
-      .trim()
-      .match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
-    let hours = 12;
-    let minutes = 0;
-    if (timeMatch) {
-      hours = Number(timeMatch[1]);
-      minutes = timeMatch[2] ? Number(timeMatch[2]) : 0;
-      const meridiem = timeMatch[3].toLowerCase();
-      if (meridiem === "p" && hours !== 12) hours += 12;
-      if (meridiem === "a" && hours === 12) hours = 0;
-    }
-    return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
   };
 
   const formatGameTime = (gameDate: string, gameTime: string) => {
@@ -377,7 +392,64 @@ const Picks = () => {
     return now > cutoffTime;
   };
 
-  const canSubmit = () => true;
+  const canEditPicks = () => {
+    if (!selectedWeek || !games.length) return true;
+    
+    const currentWeekGames = games.filter((g) => {
+      const weekNum = Number(g.gameWeek.match(/\d+/)?.[0] ?? NaN);
+      return !Number.isNaN(weekNum) && weekNum === selectedWeek;
+    });
+
+    if (currentWeekGames.length === 0) return true;
+
+    const now = new Date();
+    
+    // Check for Thursday night game (10 minutes before kickoff)
+    const thursdayGame = currentWeekGames.find((g) => {
+      const gameDateTime = parseGameDateTime(g.gameDate as string, g.gameTime as string);
+      return gameDateTime.getDay() === 4; // Thursday
+    });
+    
+    if (thursdayGame) {
+      const thursdayDateTime = parseGameDateTime(thursdayGame.gameDate as string, thursdayGame.gameTime as string);
+      const lockoutTime = new Date(thursdayDateTime.getTime() - (10 * 60 * 1000)); // 10 minutes before
+      if (now > lockoutTime) return false;
+    }
+
+    // Check for Sunday games (before first kickoff)
+    const sundayGames = currentWeekGames.filter((g) => {
+      const gameDateTime = parseGameDateTime(g.gameDate as string, g.gameTime as string);
+      return gameDateTime.getDay() === 0; // Sunday
+    });
+
+    if (sundayGames.length > 0) {
+      const firstSundayGame = sundayGames.sort((a, b) => {
+        const dateA = parseGameDateTime(a.gameDate as string, a.gameTime as string);
+        const dateB = parseGameDateTime(b.gameDate as string, b.gameTime as string);
+        return dateA.getTime() - dateB.getTime();
+      })[0];
+
+      const firstSundayGameDateTime = parseGameDateTime(firstSundayGame.gameDate as string, firstSundayGame.gameTime as string);
+      if (now > firstSundayGameDateTime) return false;
+    }
+
+    // Check for Monday games (10 minutes before kickoff, same as Thursday)
+    const mondayGames = currentWeekGames.filter((g) => {
+      const gameDateTime = parseGameDateTime(g.gameDate as string, g.gameTime as string);
+      return gameDateTime.getDay() === 1; // Monday
+    });
+
+    if (mondayGames.length > 0) {
+      const mondayGame = mondayGames[0]; // Assuming only one Monday game
+      const mondayDateTime = parseGameDateTime(mondayGame.gameDate as string, mondayGame.gameTime as string);
+      const lockoutTime = new Date(mondayDateTime.getTime() - (10 * 60 * 1000)); // 10 minutes before
+      if (now > lockoutTime) return false;
+    }
+
+    return true;
+  };
+
+  const canSubmit = () => canEditPicks();
 
   const handleSubmit = async () => {
     const weekToSave = selectedWeek ?? currentWeek;
@@ -398,6 +470,13 @@ const Picks = () => {
       isFinalized: true,
     };
     console.log("[PICKS] Submitting payload:", payload);
+    console.log("[PICKS] Prop bet details:", { propBet, propBetOdds });
+    console.log("[PICKS] Prop bet validation:", {
+      propBetExists: !!propBet,
+      propBetLength: propBet?.length || 0,
+      propBetOddsExists: !!propBetOdds,
+      propBetOddsLength: propBetOdds?.length || 0
+    });
 
     try {
       console.log("[PICKS] Making API call to picks endpoint");
@@ -419,7 +498,11 @@ const Picks = () => {
       const message = err instanceof Error ? err.message : String(err);
       console.error("[PICKS] Submit failed:", message);
       try {
-        alert(`Submit failed: ${message}`);
+        if (message.includes("locked for this week")) {
+          alert(`Picks are locked: ${message}`);
+        } else {
+          alert(`Submit failed: ${message}`);
+        }
       } catch {/* noop */}
     } finally {
       setIsSubmitting(false);
@@ -481,6 +564,11 @@ const Picks = () => {
             <p className="text-muted-foreground">
               Week {selectedWeek ?? "-"} • {joinedCurrentWeekGames.filter(g => !isGameStarted(g.gameDate, g.gameTime)).length} games
             </p>
+            {!canEditPicks() && (
+              <Badge variant="destructive" className="text-sm">
+                Picks Locked
+              </Badge>
+            )}
             {availableWeeks.length > 1 && (
               <div className="flex items-center gap-2">
                 <Label htmlFor="week-selector" className="text-sm text-muted-foreground">
@@ -502,9 +590,14 @@ const Picks = () => {
             )}
           </div>
         </div>
-        {hasSubmitted && (
+        {hasSubmitted && canEditPicks() && (
           <Badge variant="default" className="text-sm">
-            Picks Submitted
+            Picks Submitted - Can Edit
+          </Badge>
+        )}
+        {hasSubmitted && !canEditPicks() && (
+          <Badge variant="destructive" className="text-sm">
+            Picks Locked
           </Badge>
         )}
       </div>
@@ -526,12 +619,13 @@ const Picks = () => {
               .filter((g) => !isGameStarted(g.gameDate, g.gameTime))
               .map((game) => {
               const gameStarted = isGameStarted(game.gameDate, game.gameTime);
+              const canEdit = canEditPicks();
 
               return (
                 <div
                   key={game.id}
                   className={`p-4 border rounded-lg transition-all duration-200 hover:shadow-md ${
-                    gameStarted || hasSubmitted ? "bg-muted/50 opacity-60" : "hover:border-primary/50"
+                    gameStarted || !canEdit ? "bg-muted/50 opacity-60" : "hover:border-primary/50"
                   }`}
                 >
                   <div className="flex items-center justify-between mb-3">
@@ -543,7 +637,7 @@ const Picks = () => {
                         </Badge>
                       )}
                     </div>
-                    {(gameStarted || hasSubmitted) && (
+                    {gameStarted && (
                       <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                     )}
                   </div>
@@ -597,7 +691,7 @@ const Picks = () => {
                           (game.awayTeam?.teamAbv as string) || ""
                         )
                       }
-                      disabled={gameStarted || hasSubmitted}
+                      disabled={gameStarted || !canEdit}
                       style={{
                         backgroundColor:
                           picks[game.id] === game.awayTeam?.teamAbv
@@ -610,7 +704,7 @@ const Picks = () => {
                       }}
                       onMouseEnter={(e) => {
                         if (
-                          !gameStarted && !hasSubmitted &&
+                          !gameStarted && canEdit &&
                           picks[game.id] !== game.awayTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "#00000010";
@@ -618,7 +712,7 @@ const Picks = () => {
                       }}
                       onMouseLeave={(e) => {
                         if (
-                          !gameStarted && !hasSubmitted &&
+                          !gameStarted && canEdit &&
                           picks[game.id] !== game.awayTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "";
@@ -656,7 +750,7 @@ const Picks = () => {
                           (game.homeTeam?.teamAbv as string) || ""
                         )
                       }
-                      disabled={gameStarted || hasSubmitted}
+                      disabled={gameStarted || !canEdit}
                       style={{
                         backgroundColor:
                           picks[game.id] === game.homeTeam?.teamAbv
@@ -669,7 +763,7 @@ const Picks = () => {
                       }}
                       onMouseEnter={(e) => {
                         if (
-                          !gameStarted && !hasSubmitted &&
+                          !gameStarted && canEdit &&
                           picks[game.id] !== game.homeTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "#00000010";
@@ -677,7 +771,7 @@ const Picks = () => {
                       }}
                       onMouseLeave={(e) => {
                         if (
-                          !gameStarted && !hasSubmitted &&
+                          !gameStarted && canEdit &&
                           picks[game.id] !== game.homeTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "";
@@ -722,9 +816,9 @@ const Picks = () => {
               Choose your most confident pick for double points
             </CardDescription>
           </CardHeader>
-          <CardContent className={hasSubmitted ? "opacity-60" : undefined}>
-            <Select value={lockOfWeek} onValueChange={(v) => { if (hasSubmitted) return; setLockOfWeek(v); }}>
-              <SelectTrigger disabled={hasSubmitted}>
+          <CardContent className={!canEditPicks() ? "opacity-60" : undefined}>
+            <Select value={lockOfWeek} onValueChange={(v) => { if (!canEditPicks()) return; setLockOfWeek(v); }}>
+              <SelectTrigger disabled={!canEditPicks()}>
                 <SelectValue placeholder="Select your lock of the week" />
               </SelectTrigger>
               <SelectContent>
@@ -768,15 +862,15 @@ const Picks = () => {
               Pick a player to score a touchdown this week
             </CardDescription>
           </CardHeader>
-          <CardContent className={hasSubmitted ? "opacity-60" : undefined}>
-            <Popover open={playerSearchOpen} onOpenChange={(open) => { if (hasSubmitted) return; setPlayerSearchOpen(open); }}>
+          <CardContent className={!canEditPicks() ? "opacity-60" : undefined}>
+            <Popover open={playerSearchOpen} onOpenChange={(open) => { if (!canEditPicks()) return; setPlayerSearchOpen(open); }}>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   role="combobox"
                   aria-expanded={playerSearchOpen}
                   className="w-full justify-between"
-                  disabled={hasSubmitted}
+                  disabled={!canEditPicks()}
                 >
                   {playerSearchValue || "Search for a player..."}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -855,7 +949,7 @@ const Picks = () => {
             Submit a prop bet for admin approval
           </CardDescription>
         </CardHeader>
-        <CardContent className={hasSubmitted ? "opacity-60" : undefined}>
+        <CardContent className={!canEditPicks() ? "opacity-60" : undefined}>
           <div className="space-y-2">
             <Label htmlFor="propBet">Prop Bet Description</Label>
             <Input
@@ -865,7 +959,7 @@ const Picks = () => {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 setPropBet(e.target.value)
               }
-              disabled={hasSubmitted}
+              disabled={!canEditPicks()}
             />
             <Label htmlFor="propBetOdds">Prop Bet Odds</Label>
             <Input
@@ -875,7 +969,7 @@ const Picks = () => {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 setPropBetOdds(e.target.value)
               }
-              disabled={hasSubmitted}
+              disabled={!canEditPicks()}
             />
             <p className="text-xs text-muted-foreground">
               Describe your prop bet clearly and provide the odds (e.g., +190,
@@ -887,16 +981,16 @@ const Picks = () => {
 
       {/* Action buttons */}
       <div className="flex gap-2 justify-end">
-        <Button onClick={handleSubmit} disabled={isSubmitting || hasSubmitted} size="lg" className="min-w-32">
+        <Button onClick={handleSubmit} disabled={isSubmitting || !canSubmit()} size="lg" className="min-w-32">
           {isSubmitting ? (
             <>
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-              Submitting...
+              {hasSubmitted ? "Updating..." : "Submitting..."}
             </>
           ) : (
             <>
               <Save className="mr-2 h-4 w-4" />
-              Submit Picks
+              {hasSubmitted ? "Update Picks" : "Submit Picks"}
             </>
           )}
         </Button>

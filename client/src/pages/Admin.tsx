@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "../contexts/useAuth";
 import {
   Card,
@@ -21,12 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CheckCircle, XCircle, Save, AlertTriangle, Clock, Trophy, Target, Users } from "lucide-react";
-import {
-  currentWeekGames,
-  pendingPropBets,
-  mockUserPicks,
-  users as mockUsers,
-} from "../data/mockData";
+// Removed mock data import - using real API data
 import { apiClient, apiOrigin } from "../lib/api";
 
 type ApiSuccess<T> = { success: true; data: T; message?: string };
@@ -42,16 +37,39 @@ type ApiUser = {
 const Admin = () => {
   const { currentUser } = useAuth();
 
-  const [propBetActions, setPropBetActions] = useState<Record<number, string>>(
-    {}
-  );
+  // Prop Bet Management
+  const [propBets, setPropBets] = useState<Array<{
+    _id: string;
+    user: { _id: string; username: string; avatar?: string };
+    week: number;
+    propBet: string;
+    propBetOdds?: string;
+    status: 'pending' | 'approved' | 'rejected';
+    submittedAt: string;
+  }>>([]);
+  const [propBetActions, setPropBetActions] = useState<Record<string, string>>({});
   const [isUpdating, setIsUpdating] = useState(false);
-  const [selectedWeek] = useState("10");
+  const [selectedWeek, setSelectedWeek] = useState<string>("all");
+  const [isLoadingPropBets, setIsLoadingPropBets] = useState(false);
+
+  // Games data state
+  const [games, setGames] = useState<Array<{
+    gameID: string;
+    gameWeek: string;
+    gameDate: string;
+    gameTime: string;
+    teamIDHome: string;
+    teamIDAway: string;
+  }>>([]);
+  // Removed unused loading states
 
   // Users list state
   const [users, setUsers] = useState<ApiUser[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
+
+  // Submitted picks count
+  const [submittedPicksCount, setSubmittedPicksCount] = useState(0);
 
   // Create User form state
   const [newUsername, setNewUsername] = useState("");
@@ -84,6 +102,91 @@ const Admin = () => {
     }
   };
 
+  const fetchPropBets = async () => {
+    try {
+      setIsLoadingPropBets(true);
+      console.log("[ADMIN] Fetching prop bets...");
+      const res = await apiClient.get<ApiSuccess<Array<{
+        _id: string;
+        user: { _id: string; username: string; avatar?: string };
+        week: number;
+        propBet: string;
+        propBetOdds?: string;
+        status: 'pending' | 'approved' | 'rejected';
+        submittedAt: string;
+      }>>>("picks/prop-bets");
+      console.log("[ADMIN] Prop bets response:", res);
+      console.log("[ADMIN] Prop bets data:", res.data);
+      setPropBets(res.data ?? []);
+    } catch (err) {
+      console.error("Error fetching prop bets:", err);
+      setPropBets([]);
+    } finally {
+      setIsLoadingPropBets(false);
+    }
+  };
+
+  // Prop bet filtering state
+  const [selectedUser, setSelectedUser] = useState<string>("all");
+  const [selectedPropWeek, setSelectedPropWeek] = useState<string>("all");
+
+  // Get unique weeks from prop bets
+  const availableWeeks = useMemo(() => {
+    const weeks = propBets.map(pb => pb.week).filter((week, index, arr) => arr.indexOf(week) === index);
+    return weeks.sort((a, b) => a - b);
+  }, [propBets]);
+
+  // Filter prop bets based on selected user and week
+  const filteredPropBets = useMemo(() => {
+    return propBets.filter(propBet => {
+      const userMatch = selectedUser === "all" || propBet.user._id === selectedUser;
+      const weekMatch = selectedPropWeek === "all" || propBet.week.toString() === selectedPropWeek;
+      return userMatch && weekMatch;
+    });
+  }, [propBets, selectedUser, selectedPropWeek]);
+
+  const fetchGames = async () => {
+    try {
+      const res = await apiClient.get<ApiSuccess<Array<{
+        gameID: string;
+        gameWeek: string;
+        gameDate: string;
+        gameTime: string;
+        teamIDHome: string;
+        teamIDAway: string;
+      }>>>("games");
+      setGames(res.data ?? []);
+    } catch (err) {
+      console.error("Failed to load games:", err);
+      setGames([]);
+    }
+  };
+
+  // Get available weeks from games
+  const availableGameWeeks = useMemo(() => {
+    const weeks = games.map(g => {
+      const weekMatch = g.gameWeek.match(/\d+/);
+      return weekMatch ? parseInt(weekMatch[0]) : null;
+    }).filter((week): week is number => week !== null);
+    return [...new Set(weeks)].sort((a, b) => a - b);
+  }, [games]);
+
+  const fetchSubmittedPicksCount = useCallback(async () => {
+    try {
+      const res = await apiClient.get<ApiSuccess<Array<{
+        _id: string;
+        user: string;
+        week: number;
+        isFinalized: boolean;
+      }>>>(`picks/all/${selectedWeek}`);
+      const finalizedPicks = res.data?.filter(pick => pick.isFinalized) || [];
+      setSubmittedPicksCount(finalizedPicks.length);
+    } catch (err) {
+      console.error("Error fetching submitted picks count:", err);
+      setSubmittedPicksCount(0);
+    }
+  }, [selectedWeek]);
+
   const fetchUserById = async (id: string) => {
     const res = await apiClient.get<ApiSuccess<ApiUser>>(`users/${id}`);
     return res.data as ApiUser;
@@ -91,7 +194,10 @@ const Admin = () => {
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+    fetchPropBets();
+    fetchGames();
+    fetchSubmittedPicksCount();
+  }, [selectedWeek, fetchSubmittedPicksCount]);
 
   const handleCreateUser = async () => {
     setCreateUserError(null);
@@ -186,7 +292,7 @@ const Admin = () => {
     );
   }
 
-  const handlePropBetAction = (propBetId: number, action: string) => {
+  const handlePropBetAction = (propBetId: string, action: string) => {
     setPropBetActions((prev) => ({
       ...prev,
       [propBetId]: action,
@@ -195,10 +301,20 @@ const Admin = () => {
 
   const savePropBetActions = async () => {
     setIsUpdating(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setIsUpdating(false);
-    // Show success message
+    try {
+      const actions = Object.entries(propBetActions);
+      for (const [propBetId, action] of actions) {
+        await apiClient.patch<ApiSuccess<unknown>>(`picks/prop-bets/${propBetId}`, {
+          status: action
+        });
+      }
+      setPropBetActions({});
+      fetchPropBets(); // Refresh the list
+    } catch (err) {
+      console.error("Error updating prop bets:", err);
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   const getGameStatus = (gameTime: string) => {
@@ -215,22 +331,46 @@ const Admin = () => {
   };
 
   const currentWeekStats = {
-    totalGames: currentWeekGames.length,
-    completedGames: currentWeekGames.filter(
-      (g) => getGameStatus(g.gameTime) === "completed"
-    ).length,
-    submittedPicks: mockUserPicks.filter((p) => p.isFinalized).length,
-    pendingProps: pendingPropBets.filter((p) => p.status === "pending").length,
+    totalGames: selectedWeek === "all" 
+      ? games.length 
+      : games.filter(g => g.gameWeek === selectedWeek).length,
+    completedGames: selectedWeek === "all"
+      ? games.filter(g => getGameStatus(g.gameTime) === "completed").length
+      : games.filter(g => 
+          g.gameWeek === selectedWeek && getGameStatus(g.gameTime) === "completed"
+        ).length,
+    submittedPicks: submittedPicksCount,
+    pendingProps: propBets.filter((p) => p.status === "pending").length,
   };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Admin Panel</h1>
-        <p className="text-muted-foreground mt-1">
-          Manage games, approve prop bets, and override results
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Admin Panel</h1>
+          <p className="text-muted-foreground mt-1">
+            Manage games, approve prop bets, and override results
+          </p>
+        </div>
+        <div className="flex items-center gap-4">
+          <Label htmlFor="week-selector" className="text-sm text-muted-foreground">
+            View Week:
+          </Label>
+          <Select value={selectedWeek} onValueChange={setSelectedWeek}>
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="Select Week" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Weeks</SelectItem>
+              {availableGameWeeks.map(week => (
+                <SelectItem key={week} value={week.toString()}>
+                  Week {week}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Quick Stats */}
@@ -238,7 +378,7 @@ const Admin = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Week {selectedWeek} Games
+              {selectedWeek === "all" ? "All Games" : `Week ${selectedWeek} Games`}
             </CardTitle>
             <Trophy className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -259,7 +399,7 @@ const Admin = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {currentWeekStats.submittedPicks}/{mockUsers.length}
+              {currentWeekStats.submittedPicks}/{users.length}
             </div>
             <p className="text-xs text-muted-foreground">players</p>
           </CardContent>
@@ -309,80 +449,151 @@ const Admin = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {pendingPropBets.map((propBet) => {
-                  const user = mockUsers.find((u) => u.id === propBet.userId);
-                  const action = propBetActions[propBet.id];
-
-                  return (
-                    <div key={propBet.id} className="p-4 border rounded-lg">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <div className="font-medium">
-                            {propBet.description}
-                          </div>
-                          <div className="text-sm text-muted-foreground mt-1">
-                            Submitted by {user?.name} •{" "}
-                            {new Date(propBet.submittedAt).toLocaleDateString()}
-                          </div>
-                        </div>
-                        <Badge
-                          variant={
-                            propBet.status === "pending"
-                              ? "secondary"
-                              : "default"
-                          }
-                        >
-                          {propBet.status}
-                        </Badge>
-                      </div>
-
-                      {propBet.status === "pending" && (
-                        <div className="flex gap-2">
-                          <Button
-                            variant={
-                              action === "approved" ? "default" : "outline"
-                            }
-                            size="sm"
-                            onClick={() =>
-                              handlePropBetAction(propBet.id, "approved")
-                            }
-                          >
-                            <CheckCircle className="mr-2 h-4 w-4" />
-                            Approve
-                          </Button>
-                          <Button
-                            variant={
-                              action === "rejected" ? "destructive" : "outline"
-                            }
-                            size="sm"
-                            onClick={() =>
-                              handlePropBetAction(propBet.id, "rejected")
-                            }
-                          >
-                            <XCircle className="mr-2 h-4 w-4" />
-                            Reject
-                          </Button>
-                        </div>
-                      )}
-
-                      {action && (
-                        <div className="mt-2">
-                          <Badge
-                            variant={
-                              action === "approved" ? "default" : "destructive"
-                            }
-                          >
-                            {action === "approved"
-                              ? "Will be approved"
-                              : "Will be rejected"}
-                          </Badge>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+              {/* Filter Controls */}
+              <div className="mb-6 flex gap-4 items-end">
+                <div className="flex-1">
+                  <Label htmlFor="user-filter">Filter by User</Label>
+                  <Select value={selectedUser} onValueChange={setSelectedUser}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Users" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Users</SelectItem>
+                      {users.map(user => (
+                        <SelectItem key={user._id} value={user._id}>
+                          {user.username}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <Label htmlFor="week-filter">Filter by Week</Label>
+                  <Select value={selectedPropWeek} onValueChange={setSelectedPropWeek}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Weeks" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Weeks</SelectItem>
+                      {availableWeeks.map(week => (
+                        <SelectItem key={week} value={week.toString()}>
+                          Week {week}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Showing {filteredPropBets.length} of {propBets.length} prop bets
+                </div>
               </div>
+
+              {/* Debug Information */}
+              <div className="mb-4 p-3 bg-gray-100 rounded text-xs">
+                <strong>Debug Info:</strong><br/>
+                Total prop bets: {propBets.length}<br/>
+                Filtered prop bets: {filteredPropBets.length}<br/>
+                Selected user: {selectedUser}<br/>
+                Selected week: {selectedPropWeek}<br/>
+                Available weeks: {availableWeeks.join(', ')}<br/>
+                Users count: {users.length}
+              </div>
+
+              {isLoadingPropBets ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                  <p className="text-gray-600 mt-2">Loading prop bets...</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredPropBets.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-600">
+                        {propBets.length === 0 ? "No prop bets found" : "No prop bets match the selected filters"}
+                      </p>
+                    </div>
+                  ) : (
+                    filteredPropBets.map((propBet) => {
+                      const action = propBetActions[propBet._id];
+
+                      return (
+                        <div key={propBet._id} className="p-4 border rounded-lg">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1">
+                              <div className="font-medium">
+                                {propBet.propBet}
+                              </div>
+                              {propBet.propBetOdds && (
+                                <div className="text-sm text-blue-600 font-medium mt-1">
+                                  Odds: {propBet.propBetOdds}
+                                </div>
+                              )}
+                              <div className="text-sm text-muted-foreground mt-1">
+                                Submitted by {propBet.user.username} • Week {propBet.week} •{" "}
+                                {new Date(propBet.submittedAt).toLocaleDateString()}
+                              </div>
+                            </div>
+                            <Badge
+                              variant={
+                                propBet.status === "pending"
+                                  ? "secondary"
+                                  : propBet.status === "approved"
+                                  ? "default"
+                                  : "destructive"
+                              }
+                            >
+                              {propBet.status}
+                            </Badge>
+                          </div>
+
+                          {propBet.status === "pending" && (
+                            <div className="flex gap-2">
+                              <Button
+                                variant={
+                                  action === "approved" ? "default" : "outline"
+                                }
+                                size="sm"
+                                onClick={() =>
+                                  handlePropBetAction(propBet._id, "approved")
+                                }
+                              >
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                Approve
+                              </Button>
+                              <Button
+                                variant={
+                                  action === "rejected" ? "destructive" : "outline"
+                                }
+                                size="sm"
+                                onClick={() =>
+                                  handlePropBetAction(propBet._id, "rejected")
+                                }
+                              >
+                                <XCircle className="mr-2 h-4 w-4" />
+                                Reject
+                              </Button>
+                            </div>
+                          )}
+
+                          {action && (
+                            <div className="mt-2">
+                              <Badge
+                                variant={
+                                  action === "approved" ? "default" : "destructive"
+                                }
+                              >
+                                {action === "approved"
+                                  ? "Will be approved"
+                                  : "Will be rejected"}
+                              </Badge>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
 
               {Object.keys(propBetActions).length > 0 && (
                 <div className="mt-6 flex justify-end">
