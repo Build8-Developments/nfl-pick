@@ -64,7 +64,7 @@ const limiter = rateLimit({
   max: 100,
   message: "Too many requests, please try again later.",
 });
-server.use(limiter);
+// server.use(limiter);
 
 // Use the app routes
 server.use("/api/v1", app);

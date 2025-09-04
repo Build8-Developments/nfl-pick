@@ -73,7 +73,8 @@ export class ApiClient {
     };
     if (options.body !== undefined && method !== "GET") {
       // If body is FormData, let the browser set the correct Content-Type with boundary
-      const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+      const isFormData =
+        typeof FormData !== "undefined" && options.body instanceof FormData;
       if (isFormData) {
         // Remove any explicit content-type header to avoid boundary issues
         if (headers["Content-Type"]) {
@@ -110,7 +111,9 @@ export class ApiClient {
       throw error;
     }
 
-    const responseData = isJson ? await res.json() : ((await res.text()) as unknown);
+    const responseData = isJson
+      ? await res.json()
+      : ((await res.text()) as unknown);
     console.log("[API CLIENT] Raw response data:", responseData);
     return responseData as TResponse;
   }
@@ -177,3 +180,82 @@ export const apiClient = new ApiClient({
 
 // Origin (protocol + host + port) of the API, useful for resolving absolute asset URLs
 export const apiOrigin: string = new URL(resolveBaseUrl()).origin;
+
+// Dashboard-specific API functions
+export const dashboardApi = {
+  // Get dashboard summary data
+  getSummary: () =>
+    apiClient.get<{
+      success: boolean;
+      data: {
+        totalUsers: number;
+        totalPicks: number;
+        upcomingGames: Array<{
+          gameID: string;
+          gameWeek: string;
+          home: string;
+          away: string;
+          gameDate: string;
+          gameTime: string;
+        }>;
+      };
+    }>("dashboard"),
+
+  // Get user's pick for a specific week
+  getMyPick: (week: number) =>
+    apiClient.get<{
+      success: boolean;
+      data: {
+        selections: Record<string, string>;
+        lockOfWeek?: string;
+        touchdownScorer?: string;
+        touchdownScorerName?: string;
+        propBet?: string;
+        isFinalized?: boolean;
+      } | null;
+    }>(`picks/${week}`),
+
+  // Get leaderboard data
+  getLeaderboard: () =>
+    apiClient.get<{
+      success: boolean;
+      data: Array<{
+        user: string;
+        wins: number;
+        losses: number;
+        winPct: number;
+      }>;
+    }>("leaderboard"),
+
+  // Get all picks for a specific week (for admin or public viewing)
+  getAllPicksForWeek: (week: number) =>
+    apiClient.get<{
+      success: boolean;
+      data: Array<{
+        user: string;
+        selections: Record<string, string>;
+        lockOfWeek?: string;
+        touchdownScorer?: string;
+        propBet?: string;
+        isFinalized?: boolean;
+      }>;
+    }>(`picks/all/${week}`),
+
+  // Get weeks with finalized picks
+  getWeeksWithFinalizedPicks: () =>
+    apiClient.get<{ success: boolean; data: number[] }>("picks/weeks"),
+
+  // Get player info by ID
+  getPlayerById: (playerId: string) =>
+    apiClient.get<{
+      success: boolean;
+      data: {
+        playerID: string;
+        longName: string;
+        espnName: string;
+        cbsLongName: string;
+        team: string;
+        pos: string;
+      } | null;
+    }>(`players/${playerId}`),
+};

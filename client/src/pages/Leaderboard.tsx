@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Trophy,
-
   TrendingUp,
   Calendar,
   Medal,
@@ -25,10 +24,13 @@ import { apiClient } from "@/lib/api";
 const Leaderboard = () => {
   type Row = { user: string; wins: number; losses: number; winPct: number };
   const [seasonStandings, setSeasonStandings] = useState<Row[]>([]);
+
   useEffect(() => {
     apiClient
       .get<{ success?: boolean; data?: Row[] }>("leaderboard")
-      .then((res) => setSeasonStandings(Array.isArray(res?.data) ? (res.data as Row[]) : []))
+      .then((res) =>
+        setSeasonStandings(Array.isArray(res?.data) ? (res.data as Row[]) : [])
+      )
       .catch(() => setSeasonStandings([]));
   }, []);
 
@@ -59,7 +61,11 @@ const Leaderboard = () => {
   };
 
   // Weekly breakdown removed for now (no API yet)
-  const weeklyBreakdown: Array<{ week: number; allResults: any[]; winner: any }> = [];
+  const weeklyBreakdown: Array<{
+    week: number;
+    allResults: any[];
+    winner: any;
+  }> = [];
 
   return (
     <div className="space-y-6">
@@ -108,8 +114,12 @@ const Leaderboard = () => {
                         </Badge>
                       </div>
                       <div>
-                        <div className="font-semibold text-lg">{String(user.user).slice(0, 6)}</div>
-                        <div className="text-sm text-muted-foreground">{user.winPct.toFixed(2)}% win rate</div>
+                        <div className="font-semibold text-lg">
+                          {String(user.user).slice(0, 6)}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {user.winPct.toFixed(2)}% win rate
+                        </div>
                       </div>
                     </div>
                     <div className="text-right">
@@ -133,7 +143,9 @@ const Leaderboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {seasonStandings[0] ? String(seasonStandings[0].user).slice(0, 6) : ""}
+                  {seasonStandings[0]
+                    ? String(seasonStandings[0].user).slice(0, 6)
+                    : ""}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {seasonStandings[0]?.wins ?? 0} wins
@@ -150,44 +162,62 @@ const Leaderboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {seasonStandings.slice().sort((a, b) => b.winPct - a.winPct)[0]?.user}
+                  {
+                    seasonStandings
+                      .slice()
+                      .sort((a, b) => b.winPct - a.winPct)[0]?.user
+                  }
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {(seasonStandings.slice().sort((a, b) => b.winPct - a.winPct)[0]?.winPct ?? 0).toFixed(2)} win %
+                  {(
+                    seasonStandings
+                      .slice()
+                      .sort((a, b) => b.winPct - a.winPct)[0]?.winPct ?? 0
+                  ).toFixed(2)}{" "}
+                  win %
                 </p>
               </CardContent>
             </Card>
-
-
           </div>
 
-            {/* Scoring System removed (no static mock) */}
+          {/* Scoring System removed (no static mock) */}
 
-            {/* User Stats Summary */}
-            <Card>
-              <CardHeader>
-                <CardTitle>User Stats Summary</CardTitle>
-                <CardDescription>
-                  Pick percentages for each user
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {seasonStandings.map((user, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 rounded-lg border">
-                      <div className="flex items-center gap-3">
-                        <img src="/user_avatar.png" alt="User Avatar" className="h-8 w-8 rounded-full" />
-                        <div className="font-medium">{String(user.user).slice(0, 6)}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-medium">{user.winPct.toFixed(2)}%</div>
-                        <div className="text-xs text-muted-foreground">Overall Pick %</div>
+          {/* User Stats Summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle>User Stats Summary</CardTitle>
+              <CardDescription>Pick percentages for each user</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {seasonStandings.map((user, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between p-3 rounded-lg border"
+                  >
+                    <div className="flex items-center gap-3">
+                      <img
+                        src="/user_avatar.png"
+                        alt="User Avatar"
+                        className="h-8 w-8 rounded-full"
+                      />
+                      <div className="font-medium">
+                        {String(user.user).slice(0, 6)}
                       </div>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                    <div className="text-right">
+                      <div className="text-sm font-medium">
+                        {user.winPct.toFixed(2)}%
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Overall Pick %
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Weekly Results */}
@@ -211,7 +241,11 @@ const Leaderboard = () => {
                       <span className="font-semibold">{week.winner.name}</span>
                       <Badge variant="default">Winner</Badge>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => toggleWeekExpansion(week.week)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => toggleWeekExpansion(week.week)}
+                    >
                       {expandedWeek === week.week ? "Collapse" : "Expand"}
                     </Button>
                   </div>
@@ -232,7 +266,9 @@ const Leaderboard = () => {
                               #{index + 1}
                             </Badge>
                             <div>
-                              <div className="font-medium">{entry.user.name}</div>
+                              <div className="font-medium">
+                                {entry.user.name}
+                              </div>
                               <div className="text-sm text-muted-foreground flex items-center gap-4">
                                 <span>
                                   {entry.result.correctPicks} correct picks

@@ -1,7 +1,7 @@
 import { createContext } from "react";
 
 export type User = {
-  id: number;
+  id: string;
   name: string;
   email: string;
   isAdmin: boolean;
@@ -12,6 +12,10 @@ export type User = {
     percentage: number;
   };
   weeklyWins: number;
+  points?: number;
+  totalBets?: number;
+  correctBets?: number;
+  winRate?: number;
 };
 
 export type AuthContextValue = {
@@ -19,7 +23,9 @@ export type AuthContextValue = {
   login: (
     identifier: string,
     password: string
-  ) => Promise<{ success: true; user: User } | { success: false; error: string }>;
+  ) => Promise<
+    { success: true; user: User } | { success: false; error: string }
+  >;
   devLoginMock: (user: User) => void;
   logout: () => void;
   isLoading: boolean;

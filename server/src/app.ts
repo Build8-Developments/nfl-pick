@@ -14,6 +14,7 @@ import pickRouter from "./modules/picks/pick.route.js";
 import leaderboardRouter from "./modules/leaderboard/leaderboard.route.js";
 import adminRouter from "./modules/admin/admin.route.js";
 import dashboardRouter from "./modules/dashboard/dashboard.route.js";
+import uploadRouter from "./modules/uploads/upload.route.js";
 
 const app = express.Router();
 
@@ -31,6 +32,8 @@ app.get("/health", protectAdmin, (req: Request, res: Response) => {
 app.use("/users", userRouter);
 app.use("/auth", authRouter);
 
+// Uploads
+app.use("/uploads", uploadRouter);
 
 // Sync
 app.use("/sync", syncRouter);

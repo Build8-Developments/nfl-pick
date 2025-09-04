@@ -9,14 +9,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
-  RefreshCw,
-  AlertTriangle,
-  Check,
-  X,
-} from "lucide-react";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { RefreshCw, AlertTriangle, Check, X } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import type { ITeam } from "@/types/team.type";
 import type { IPlayer } from "@/types/player.type";
@@ -87,22 +88,32 @@ const LivePicks = () => {
           if (cachedGames && cachedGames.length > 0) {
             const weekNums = cachedGames
               .map((g) => g.gameWeek)
-              .map((w) => (typeof w === "string" ? w.match(/\d+/)?.[0] : undefined))
+              .map((w) =>
+                typeof w === "string" ? w.match(/\d+/)?.[0] : undefined
+              )
               .filter((n): n is string => Boolean(n))
               .map((n) => Number(n))
               .filter((n) => !Number.isNaN(n));
             if (weekNums.length) {
-              const cachedWeeksWithPicks = memCache.get<number[]>("weeks:withPicks") || [];
-              const uniqueWeeks = [...new Set([...weekNums, ...cachedWeeksWithPicks])].sort((a, b) => a - b);
+              const cachedWeeksWithPicks =
+                memCache.get<number[]>("weeks:withPicks") || [];
+              const uniqueWeeks = [
+                ...new Set([...weekNums, ...cachedWeeksWithPicks]),
+              ].sort((a, b) => a - b);
               setAvailableWeeks(uniqueWeeks);
               const now = new Date();
               const weeksWithKickoffs = uniqueWeeks.map((wk) => {
                 const gamesForWeek = cachedGames.filter((g) => {
-                  const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
+                  const num = Number(
+                    (g.gameWeek || "").match(/\d+/)?.[0] ?? NaN
+                  );
                   return !Number.isNaN(num) && num === wk;
                 });
                 const hasUpcoming = gamesForWeek.some((g) => {
-                  const dt = parseGameDateTime(g.gameDate as string, g.gameTime as string);
+                  const dt = parseGameDateTime(
+                    g.gameDate as string,
+                    g.gameTime as string
+                  );
                   return now <= new Date(dt.getTime() + 15 * 60 * 1000);
                 });
                 return { wk, hasUpcoming };
@@ -117,7 +128,9 @@ const LivePicks = () => {
                   const weeks = Array.isArray(res.data) ? res.data : [];
                   memCache.set("weeks:withPicks", weeks);
                   setAvailableWeeks((prev) => {
-                    const merged = [...new Set([...(prev || []), ...weeks])].sort((a, b) => a - b);
+                    const merged = [
+                      ...new Set([...(prev || []), ...weeks]),
+                    ].sort((a, b) => a - b);
                     return merged;
                   });
                 })
@@ -130,28 +143,43 @@ const LivePicks = () => {
           }
 
           // Teams cached but games not cached: fetch games to determine week
-          const gamesRes = await apiClient.get<{ success: boolean; data?: IGame[] }>("games");
-          const gameList = Array.isArray(gamesRes.data) ? (gamesRes.data as IGame[]) : [];
+          const gamesRes = await apiClient.get<{
+            success: boolean;
+            data?: IGame[];
+          }>("games");
+          const gameList = Array.isArray(gamesRes.data)
+            ? (gamesRes.data as IGame[])
+            : [];
           memCache.set("games", gameList);
           if (gameList.length) {
             const weekNums = gameList
               .map((g) => g.gameWeek)
-              .map((w) => (typeof w === "string" ? w.match(/\d+/)?.[0] : undefined))
+              .map((w) =>
+                typeof w === "string" ? w.match(/\d+/)?.[0] : undefined
+              )
               .filter((n): n is string => Boolean(n))
               .map((n) => Number(n))
               .filter((n) => !Number.isNaN(n));
             if (weekNums.length) {
-              const cachedWeeksWithPicks = memCache.get<number[]>("weeks:withPicks") || [];
-              const uniqueWeeks = [...new Set([...weekNums, ...cachedWeeksWithPicks])].sort((a, b) => a - b);
+              const cachedWeeksWithPicks =
+                memCache.get<number[]>("weeks:withPicks") || [];
+              const uniqueWeeks = [
+                ...new Set([...weekNums, ...cachedWeeksWithPicks]),
+              ].sort((a, b) => a - b);
               setAvailableWeeks(uniqueWeeks);
               const now = new Date();
               const weeksWithKickoffs = uniqueWeeks.map((wk) => {
                 const gamesForWeek = gameList.filter((g) => {
-                  const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
+                  const num = Number(
+                    (g.gameWeek || "").match(/\d+/)?.[0] ?? NaN
+                  );
                   return !Number.isNaN(num) && num === wk;
                 });
                 const hasUpcoming = gamesForWeek.some((g) => {
-                  const dt = parseGameDateTime(g.gameDate as string, g.gameTime as string);
+                  const dt = parseGameDateTime(
+                    g.gameDate as string,
+                    g.gameTime as string
+                  );
                   return now <= new Date(dt.getTime() + 15 * 60 * 1000);
                 });
                 return { wk, hasUpcoming };
@@ -160,11 +188,16 @@ const LivePicks = () => {
               const chosen = upcoming ?? Math.max(...uniqueWeeks);
               setSelectedWeek(chosen);
               try {
-                const weeksRes = await apiClient.get<{ success: boolean; data?: number[] }>("picks/weeks");
+                const weeksRes = await apiClient.get<{
+                  success: boolean;
+                  data?: number[];
+                }>("picks/weeks");
                 const weeks = Array.isArray(weeksRes.data) ? weeksRes.data : [];
                 memCache.set("weeks:withPicks", weeks);
                 setAvailableWeeks((prev) => {
-                  const merged = [...new Set([...(prev || []), ...weeks])].sort((a, b) => a - b);
+                  const merged = [...new Set([...(prev || []), ...weeks])].sort(
+                    (a, b) => a - b
+                  );
                   return merged;
                 });
               } catch {
@@ -181,34 +214,50 @@ const LivePicks = () => {
         // Fetch from API
         const [teamsRes, playersRes, weeksRes] = await Promise.all([
           apiClient.get<{ success: boolean; data?: ITeam[] }>("teams"),
-          apiClient.get<{ success: boolean; data?: { items: IPlayer[] } }>("players", { query: { limit: 500 } }),
+          apiClient.get<{ success: boolean; data?: { items: IPlayer[] } }>(
+            "players",
+            { query: { limit: 500 } }
+          ),
           apiClient.get<{ success: boolean; data?: number[] }>("picks/weeks"),
         ]);
 
         const teamList = Array.isArray(teamsRes.data) ? teamsRes.data : [];
 
         setTeams(teamList);
-        const playerList = Array.isArray(playersRes.data?.items) ? playersRes.data.items : [];
+        const playerList = Array.isArray(playersRes.data?.items)
+          ? playersRes.data.items
+          : [];
         setPlayers(playerList);
 
         // Cache the results
         memCache.set("teams", teamList);
         memCache.set("players", playerList);
-        const weeksWithPicks = Array.isArray(weeksRes.data) ? weeksRes.data : [];
+        const weeksWithPicks = Array.isArray(weeksRes.data)
+          ? weeksRes.data
+          : [];
         memCache.set("weeks:withPicks", weeksWithPicks);
 
-        const gamesRes = await apiClient.get<{ success: boolean; data?: IGame[] }>("games");
-        const gameList = Array.isArray(gamesRes.data) ? (gamesRes.data as IGame[]) : [];
+        const gamesRes = await apiClient.get<{
+          success: boolean;
+          data?: IGame[];
+        }>("games");
+        const gameList = Array.isArray(gamesRes.data)
+          ? (gamesRes.data as IGame[])
+          : [];
         memCache.set("games", gameList);
         if (gameList.length) {
           const weekNums = gameList
             .map((g) => g.gameWeek)
-            .map((w) => (typeof w === "string" ? w.match(/\d+/)?.[0] : undefined))
+            .map((w) =>
+              typeof w === "string" ? w.match(/\d+/)?.[0] : undefined
+            )
             .filter((n): n is string => Boolean(n))
             .map((n) => Number(n))
             .filter((n) => !Number.isNaN(n));
           if (weekNums.length) {
-            const uniqueWeeks = [...new Set([...weekNums, ...weeksWithPicks])].sort((a, b) => a - b);
+            const uniqueWeeks = [
+              ...new Set([...weekNums, ...weeksWithPicks]),
+            ].sort((a, b) => a - b);
             setAvailableWeeks(uniqueWeeks);
             const now = new Date();
             const weeksWithKickoffs = uniqueWeeks.map((wk) => {
@@ -217,7 +266,10 @@ const LivePicks = () => {
                 return !Number.isNaN(num) && num === wk;
               });
               const hasUpcoming = gamesForWeek.some((g) => {
-                const dt = parseGameDateTime(g.gameDate as string, g.gameTime as string);
+                const dt = parseGameDateTime(
+                  g.gameDate as string,
+                  g.gameTime as string
+                );
                 return now <= new Date(dt.getTime() + 15 * 60 * 1000);
               });
               return { wk, hasUpcoming };
@@ -229,7 +281,6 @@ const LivePicks = () => {
             setSelectedWeek((prev) => prev ?? 1);
           }
         }
-
       } catch (err) {
         console.error("Error loading data:", err);
         setError("Failed to load data. Please try again.");
@@ -247,10 +298,14 @@ const LivePicks = () => {
     let active = true;
     setIsRefreshing(true);
     apiClient
-      .get<{ success?: boolean; data?: BackendPick[] }>(`picks/all/${selectedWeek}`)
+      .get<{ success?: boolean; data?: BackendPick[] }>(
+        `picks/all/${selectedWeek}`
+      )
       .then((res) => {
         if (!active) return;
-        setAllPicks(Array.isArray(res?.data) ? (res.data as BackendPick[]) : []);
+        setAllPicks(
+          Array.isArray(res?.data) ? (res.data as BackendPick[]) : []
+        );
       })
       .catch((err) => {
         console.error("Error loading picks:", err);
@@ -279,9 +334,13 @@ const LivePicks = () => {
       isFetchingRef.current = true;
       lastFetchAtRef.current = now;
       apiClient
-        .get<{ success?: boolean; data?: BackendPick[] }>(`picks/all/${selectedWeek}`)
+        .get<{ success?: boolean; data?: BackendPick[] }>(
+          `picks/all/${selectedWeek}`
+        )
         .then((res) => {
-          setAllPicks(Array.isArray(res?.data) ? (res.data as BackendPick[]) : []);
+          setAllPicks(
+            Array.isArray(res?.data) ? (res.data as BackendPick[]) : []
+          );
           setJustUpdated(true);
           setTimeout(() => setJustUpdated(false), 2500);
         })
@@ -308,24 +367,28 @@ const LivePicks = () => {
   const handleRefresh = () => {
     setIsRefreshing(true);
     setError(null);
-    
+
     // Reload data
     const loadData = async () => {
       try {
         const [teamsRes, playersRes] = await Promise.all([
           apiClient.get<{ success: boolean; data?: ITeam[] }>("teams"),
-          apiClient.get<{ success: boolean; data?: { items: IPlayer[] } }>("players", { query: { limit: 500 } }),
+          apiClient.get<{ success: boolean; data?: { items: IPlayer[] } }>(
+            "players",
+            { query: { limit: 500 } }
+          ),
         ]);
         const teamList = Array.isArray(teamsRes.data) ? teamsRes.data : [];
         setTeams(teamList);
         memCache.set("teams", teamList);
-        const playerList = Array.isArray(playersRes.data?.items) ? playersRes.data.items : [];
+        const playerList = Array.isArray(playersRes.data?.items)
+          ? playersRes.data.items
+          : [];
         setPlayers(playerList);
         memCache.set("players", playerList);
-
       } catch (err) {
         console.error("Error refreshing data:", err);
-        setError('Failed to refresh data. Please try again.');
+        setError("Failed to refresh data. Please try again.");
       } finally {
         setIsRefreshing(false);
       }
@@ -334,30 +397,80 @@ const LivePicks = () => {
     loadData();
   };
 
+  // State to store users for avatar lookup
+  const [users, setUsers] = useState<
+    Array<{ _id: string; username: string; avatar: string }>
+  >([]);
+  // State to store individual player data for TD scorers
+  const [playerData, setPlayerData] = useState<Record<string, IPlayer>>({});
 
+  // Fetch users from backend
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const response = await apiClient.get<{
+          success: boolean;
+          data?: Array<{ _id: string; username: string; avatar: string }>;
+        }>("users");
+        if (response.data && Array.isArray(response.data)) {
+          setUsers(response.data);
+        }
+      } catch (error) {
+        console.error("Error fetching users:", error);
+      }
+    };
+    fetchUsers();
+  }, []);
 
-  // Helper function to get user avatar
-  const getUserAvatar = (userName: string) => {
-    const avatars = [
-      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=face",
-    ];
-    
-    // Use name to get consistent avatar
-    const index = userName.charCodeAt(0) % avatars.length;
-    return avatars[index];
-  };
+  // Function to fetch individual player data
+  const fetchPlayerData = useCallback(
+    async (playerId: string) => {
+      if (!playerId || playerData[playerId]) return; // Already fetched or no ID
+
+      try {
+        const response = await apiClient.get<{
+          success: boolean;
+          data?: IPlayer;
+        }>(`players/${playerId}`);
+        if (response.data) {
+          setPlayerData((prev) => ({
+            ...prev,
+            [playerId]: response.data!,
+          }));
+        }
+      } catch (error) {
+        console.error(`Error fetching player ${playerId}:`, error);
+      }
+    },
+    [playerData]
+  );
+
+  // Helper function to get user avatar from backend
+  const getUserAvatar = useCallback(
+    (userName: string) => {
+      const user = users.find((u) => u.username === userName);
+      if (user && user.avatar) {
+        // Construct the full URL for the avatar
+        return `http://localhost:3000${user.avatar}`;
+      }
+
+      // Fallback to default avatar if user not found or no avatar
+      return "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face";
+    },
+    [users]
+  );
 
   // Player helpers
-  const getPlayerById = useCallback((id: string) => {
-    return players.find(p => String(p.playerID) === String(id));
-  }, [players]);
+  const getPlayerById = useCallback(
+    (id: string) => {
+      return players.find((p) => String(p.playerID) === String(id));
+    },
+    [players]
+  );
   const getPlayerHeadshot = (player: IPlayer | undefined) => {
     if (!player) return null;
-    if (player.espnHeadshot && player.espnHeadshot.trim() !== "") return player.espnHeadshot;
+    if (player.espnHeadshot && player.espnHeadshot.trim() !== "")
+      return player.espnHeadshot;
     return `https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=100&h=100&fit=crop&crop=face`;
   };
 
@@ -368,7 +481,12 @@ const LivePicks = () => {
     userAvatar: string;
     picks: { team: string; isCorrect: boolean }[];
     lock: { team: string; isCorrect: boolean };
-    tdScorer: { player: string; playerId: string; playerHeadshot: string | null; isCorrect: boolean };
+    tdScorer: {
+      player: string;
+      playerId: string;
+      playerHeadshot: string | null;
+      isCorrect: boolean;
+    };
     propBet: { description: string; isCorrect: boolean };
     totalPoints: number;
   };
@@ -377,16 +495,22 @@ const LivePicks = () => {
     const base = allPicks ? [...allPicks] : [];
     if (base.length === 0) return [];
     return base.map((p: BackendPick): DisplayUserPicks => {
-      const outcomesArray = Object.entries(p.selections || {}).map(([gid, team]) => {
-        const ok = p.outcomes ? p.outcomes[gid] : null;
-        return { team: team as string, isCorrect: ok === true };
-      });
-      const userId = typeof p.user === "string" ? p.user : p.user?._id || "unknown";
-      const userName = typeof p.user === "string" ? "User" : p.user?.username || "User";
+      const outcomesArray = Object.entries(p.selections || {}).map(
+        ([gid, team]) => {
+          const ok = p.outcomes ? p.outcomes[gid] : null;
+          return { team: team as string, isCorrect: ok === true };
+        }
+      );
+      const userId =
+        typeof p.user === "string" ? p.user : p.user?._id || "unknown";
+      const userName =
+        typeof p.user === "string" ? "User" : p.user?.username || "User";
       const userAvatar =
         typeof p.user === "string"
           ? getUserAvatar("U")
-          : (p.user?.avatar || getUserAvatar(userName || "U"));
+          : p.user?.avatar
+          ? `http://localhost:3000${p.user.avatar}`
+          : getUserAvatar(userName || "U");
       return {
         userId,
         userName,
@@ -394,22 +518,37 @@ const LivePicks = () => {
         picks: outcomesArray,
         lock: { team: (p.lockOfWeek as string) || "", isCorrect: false },
         tdScorer: {
-          player: getPlayerById(p.touchdownScorer || "")?.longName || (p.touchdownScorer || ""),
+          player:
+            playerData[p.touchdownScorer || ""]?.longName ||
+            getPlayerById(p.touchdownScorer || "")?.longName ||
+            p.touchdownScorer ||
+            "",
           playerId: p.touchdownScorer || "",
-          playerHeadshot: getPlayerHeadshot(getPlayerById(p.touchdownScorer || "")),
+          playerHeadshot:
+            playerData[p.touchdownScorer || ""]?.espnHeadshot ||
+            getPlayerHeadshot(getPlayerById(p.touchdownScorer || "")),
           isCorrect: false,
         },
         propBet: { description: p.propBet || "", isCorrect: false },
         totalPoints: 0,
       };
     });
-  }, [allPicks, getPlayerById]);
+  }, [allPicks, getPlayerById, getUserAvatar, playerData]);
 
-
+  // Fetch player data for TD scorers when picks are loaded
+  useEffect(() => {
+    if (allPicks.length > 0) {
+      allPicks.forEach((pick) => {
+        if (pick.touchdownScorer) {
+          fetchPlayerData(pick.touchdownScorer);
+        }
+      });
+    }
+  }, [allPicks, fetchPlayerData]);
 
   // Helper function to get team logo
   const getTeamLogo = (teamAbv: string) => {
-    const team = teams.find(t => t.teamAbv === teamAbv);
+    const team = teams.find((t) => t.teamAbv === teamAbv);
     if (team?.espnLogo1) {
       return team.espnLogo1;
     }
@@ -440,10 +579,16 @@ const LivePicks = () => {
             </div>
             {availableWeeks.length > 0 && (
               <div className="flex items-center gap-2">
-                <Label htmlFor="week-selector" className="text-sm text-gray-700">
+                <Label
+                  htmlFor="week-selector"
+                  className="text-sm text-gray-700"
+                >
                   Select Week:
                 </Label>
-                <Select value={selectedWeek?.toString() || ""} onValueChange={(value) => setSelectedWeek(Number(value))}>
+                <Select
+                  value={selectedWeek?.toString() || ""}
+                  onValueChange={(value) => setSelectedWeek(Number(value))}
+                >
                   <SelectTrigger id="week-selector" className="w-28">
                     <SelectValue placeholder="Week" />
                   </SelectTrigger>
@@ -456,7 +601,9 @@ const LivePicks = () => {
                   </SelectContent>
                 </Select>
                 {justUpdated && (
-                  <span className="ml-2 text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 border border-green-300">Updated</span>
+                  <span className="ml-2 text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 border border-green-300">
+                    Updated
+                  </span>
                 )}
               </div>
             )}
@@ -468,7 +615,9 @@ const LivePicks = () => {
             disabled={isRefreshing}
             className="ml-4 text-gray-700 hover:bg-gray-100 border border-gray-300"
           >
-            <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`h-5 w-5 ${isRefreshing ? "animate-spin" : ""}`}
+            />
           </Button>
         </div>
       </div>
@@ -508,14 +657,17 @@ const LivePicks = () => {
             {/* Header avatars aligned with columns */}
             <div className="grid grid-cols-3 gap-3 mb-4">
               {transformedPicks.map((user) => (
-                <div key={user.userId} className="flex items-center justify-center">
+                <div
+                  key={user.userId}
+                  className="flex items-center justify-center"
+                >
                   <img
                     src={user.userAvatar}
                     alt={user.userName}
                     className="w-12 h-12 rounded-full object-cover border-2 border-gray-300 shadow"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
-                      target.src = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face";
+                      target.src = getUserAvatar(user.userName);
                     }}
                   />
                 </div>
@@ -534,13 +686,16 @@ const LivePicks = () => {
                         const pick = user.picks[gameIdx];
                         if (!pick) {
                           return (
-                            <div key={user.userId} className="h-16 rounded-xl bg-gray-100 border border-gray-200" />
+                            <div
+                              key={user.userId}
+                              className="h-16 rounded-xl bg-gray-100 border border-gray-200"
+                            />
                           );
                         }
                         const teamLogo = getTeamLogo(pick.team);
                         // Use navy blue colors by default
-                        const bgClass = 'bg-blue-900 text-white';
-                        const borderClass = 'border-blue-800';
+                        const bgClass = "bg-blue-900 text-white";
+                        const borderClass = "border-blue-800";
                         return (
                           <div
                             key={user.userId}
@@ -552,10 +707,12 @@ const LivePicks = () => {
                               className="w-10 h-10 rounded-full object-cover mb-1"
                               onError={(e) => {
                                 const target = e.target as HTMLImageElement;
-                                target.style.display = 'none';
+                                target.style.display = "none";
                               }}
                             />
-                            <span className="text-xs font-bold">{pick.team}</span>
+                            <span className="text-xs font-bold">
+                              {pick.team}
+                            </span>
                           </div>
                         );
                       })}
@@ -570,7 +727,9 @@ const LivePicks = () => {
         {/* Enhanced Lock Section */}
         {!loading && transformedPicks.length > 0 && (
           <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-4 shadow-sm border border-yellow-100">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">LOCK OF THE WEEK</h2>
+            <h2 className="text-lg font-bold text-gray-800 mb-4">
+              LOCK OF THE WEEK
+            </h2>
             <div className="grid grid-cols-3 gap-3">
               {transformedPicks.map((user) => {
                 const teamLogo = getTeamLogo(user.lock.team);
@@ -586,10 +745,12 @@ const LivePicks = () => {
                         className="w-8 h-8 rounded-full object-cover"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
-                          target.style.display = 'none';
+                          target.style.display = "none";
                         }}
                       />
-                      <span className="text-sm font-bold">{user.lock.team}</span>
+                      <span className="text-sm font-bold">
+                        {user.lock.team}
+                      </span>
                       <div className="text-xs opacity-75">{user.userName}</div>
                     </div>
                     {user.lock.isCorrect && (
@@ -609,7 +770,9 @@ const LivePicks = () => {
         {/* Enhanced TD Scorer Section */}
         {!loading && transformedPicks.length > 0 && (
           <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 shadow-sm border border-green-100">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">TOUCHDOWN SCORER</h2>
+            <h2 className="text-lg font-bold text-gray-800 mb-4">
+              TOUCHDOWN SCORER
+            </h2>
             <div className="grid grid-cols-3 gap-4">
               {transformedPicks.map((user) => (
                 <div key={user.userId} className="text-center">
@@ -622,7 +785,7 @@ const LivePicks = () => {
                           className="w-16 h-16 rounded-full object-cover border-3 border-gray-200 shadow-md"
                           onError={(e) => {
                             const target = e.target as HTMLImageElement;
-                            target.src = "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=100&h=100&fit=crop&crop=face";
+                            target.src = getUserAvatar(user.userName);
                           }}
                         />
                       ) : (
@@ -631,7 +794,9 @@ const LivePicks = () => {
                         </div>
                       )}
                       <div className="text-center">
-                        <p className="text-sm font-bold text-gray-800">{user.tdScorer.player}</p>
+                        <p className="text-sm font-bold text-gray-800">
+                          {user.tdScorer.player}
+                        </p>
                         <p className="text-xs text-gray-500">{user.userName}</p>
                       </div>
                     </div>
@@ -653,7 +818,7 @@ const LivePicks = () => {
           </div>
         )}
 
-                {/* Enhanced Prop Bet Section */}
+        {/* Enhanced Prop Bet Section */}
         {!loading && transformedPicks.length > 0 && (
           <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-4 shadow-sm border border-purple-100">
             <h2 className="text-lg font-bold text-gray-800 mb-4">PROP BETS</h2>
@@ -668,12 +833,16 @@ const LivePicks = () => {
                         className="w-8 h-8 rounded-full object-cover border-2 border-gray-200"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
-                          target.src = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face";
+                          target.src = getUserAvatar(user.userName);
                         }}
                       />
                       <div className="flex-1">
-                        <p className="text-sm font-semibold text-gray-800">{user.propBet.description || "—"}</p>
-                        <p className="text-xs text-gray-500 mt-1">{user.userName}</p>
+                        <p className="text-sm font-semibold text-gray-800">
+                          {user.propBet.description || "—"}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {user.userName}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -688,26 +857,30 @@ const LivePicks = () => {
                       </div>
                     )}
                   </div>
-              </div>
+                </div>
               ))}
             </div>
           </div>
         )}
 
-                {/* Enhanced Total Points Section */}
+        {/* Enhanced Total Points Section */}
         {!loading && transformedPicks.length > 0 && (
           <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-4 shadow-sm border border-blue-100">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">TOTAL POINTS</h2>
+            <h2 className="text-lg font-bold text-gray-800 mb-4">
+              TOTAL POINTS
+            </h2>
             <div className="grid grid-cols-3 gap-4">
               {transformedPicks.map((user, index) => {
                 const isLeader = index === 0; // First user is leader
                 return (
                   <div key={user.userId} className="text-center">
-                    <div className={`${
-                      isLeader 
-                        ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white shadow-lg scale-105' 
-                        : 'bg-blue-900 text-white shadow-md'
-                    } p-4 rounded-xl text-2xl font-bold mb-3`}>
+                    <div
+                      className={`${
+                        isLeader
+                          ? "bg-gradient-to-br from-yellow-400 to-orange-500 text-white shadow-lg scale-105"
+                          : "bg-blue-900 text-white shadow-md"
+                      } p-4 rounded-xl text-2xl font-bold mb-3`}
+                    >
                       {user.totalPoints}
                     </div>
                     <div className="flex flex-col items-center gap-2">
@@ -715,21 +888,27 @@ const LivePicks = () => {
                         src={user.userAvatar}
                         alt={user.userName}
                         className={`w-10 h-10 rounded-full object-cover border-3 ${
-                          isLeader ? 'border-yellow-400 shadow-lg' : 'border-gray-300'
+                          isLeader
+                            ? "border-yellow-400 shadow-lg"
+                            : "border-gray-300"
                         }`}
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
-                          target.src = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face";
+                          target.src = getUserAvatar(user.userName);
                         }}
                       />
                       <div className="text-center">
-                        <p className="text-sm font-bold text-gray-800">{user.userName}</p>
+                        <p className="text-sm font-bold text-gray-800">
+                          {user.userName}
+                        </p>
                         {isLeader && (
-                          <p className="text-xs text-yellow-600 font-semibold">LEADER</p>
+                          <p className="text-xs text-yellow-600 font-semibold">
+                            LEADER
+                          </p>
                         )}
                       </div>
                     </div>
-              </div>
+                  </div>
                 );
               })}
             </div>
@@ -740,95 +919,110 @@ const LivePicks = () => {
       {/* Desktop/Tablet View - Hidden on mobile */}
       <div className="hidden lg:block">
         <div className="max-w-6xl mx-auto p-6">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="space-y-6"
+          >
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="spreads">Spread Picks</TabsTrigger>
               <TabsTrigger value="locks">Locks</TabsTrigger>
               <TabsTrigger value="td-scorers">TD Scorers</TabsTrigger>
               <TabsTrigger value="prop-bets">Prop Bets</TabsTrigger>
-        </TabsList>
+            </TabsList>
 
             <TabsContent value="spreads" className="space-y-4">
-          <Card>
-            <CardHeader>
+              <Card>
+                <CardHeader>
                   <CardTitle>Week {selectedWeek} Spread Picks</CardTitle>
-                  <CardDescription>All player spread picks with outcomes</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-                  <p className="text-gray-600 mt-2">Loading picks...</p>
-                </div>
-              ) : transformedPicks.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-600">No picks data available</p>
-                </div>
-              ) : (
-              <div className="space-y-4">
-                    {transformedPicks.map((user) => (
-                      <div key={user.userId} className="p-4 border rounded-lg">
-                        <div className="flex items-center gap-3 mb-3">
-                          <img
-                            src={user.userAvatar}
-                            alt={user.userName}
-                            className="w-10 h-10 rounded-full object-cover border-2 border-primary"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.src = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face";
-                            }}
-                          />
-                        <div>
-                            <h3 className="font-semibold">{user.userName}</h3>
-                            <p className="text-sm text-muted-foreground">
-                              {user.picks.filter(p => p.isCorrect).length}/{user.picks.length} correct
-                            </p>
+                  <CardDescription>
+                    All player spread picks with outcomes
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                      <p className="text-gray-600 mt-2">Loading picks...</p>
+                    </div>
+                  ) : transformedPicks.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-600">No picks data available</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {transformedPicks.map((user) => (
+                        <div
+                          key={user.userId}
+                          className="p-4 border rounded-lg"
+                        >
+                          <div className="flex items-center gap-3 mb-3">
+                            <img
+                              src={user.userAvatar}
+                              alt={user.userName}
+                              className="w-10 h-10 rounded-full object-cover border-2 border-primary"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.src = getUserAvatar(user.userName);
+                              }}
+                            />
+                            <div>
+                              <h3 className="font-semibold">{user.userName}</h3>
+                              <p className="text-sm text-muted-foreground">
+                                {user.picks.filter((p) => p.isCorrect).length}/
+                                {user.picks.length} correct
+                              </p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-9 gap-2">
+                            {user.picks.map((pick, index) => {
+                              const teamLogo = getTeamLogo(pick.team);
+                              return (
+                                <div
+                                  key={index}
+                                  className="bg-blue-900 text-white p-2 rounded-lg text-center text-xs font-bold relative shadow-md border border-blue-800"
+                                >
+                                  <div className="flex flex-col items-center gap-1">
+                                    <img
+                                      src={teamLogo}
+                                      alt={pick.team}
+                                      className="w-4 h-4 rounded-full object-cover"
+                                      onError={(e) => {
+                                        const target =
+                                          e.target as HTMLImageElement;
+                                        target.style.display = "none";
+                                      }}
+                                    />
+                                    <span className="text-xs font-bold">
+                                      {pick.team}
+                                    </span>
+                                  </div>
+                                  {pick.isCorrect && (
+                                    <div className="absolute -top-1 -right-1">
+                                      <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                                        <Check className="h-3 w-3 text-white" />
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
-                                                <div className="grid grid-cols-9 gap-2">
-                          {user.picks.map((pick, index) => {
-                            const teamLogo = getTeamLogo(pick.team);
-                            return (
-                              <div
-                                key={index}
-                                className="bg-blue-900 text-white p-2 rounded-lg text-center text-xs font-bold relative shadow-md border border-blue-800"
-                              >
-                                <div className="flex flex-col items-center gap-1">
-                                  <img
-                                    src={teamLogo}
-                                    alt={pick.team}
-                                    className="w-4 h-4 rounded-full object-cover"
-                                    onError={(e) => {
-                                      const target = e.target as HTMLImageElement;
-                                      target.style.display = 'none';
-                                    }}
-                                  />
-                                  <span className="text-xs font-bold">{pick.team}</span>
-                                </div>
-                                {pick.isCorrect && (
-                                  <div className="absolute -top-1 -right-1">
-                                    <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
-                                      <Check className="h-3 w-3 text-white" />
-                                    </div>
-                                  </div>
-                                )}
-                      </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
+                      ))}
                     </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
 
             <TabsContent value="locks" className="space-y-4">
               <Card>
                 <CardHeader>
                   <CardTitle>Lock of the Week</CardTitle>
-                  <CardDescription>Each player's most confident pick</CardDescription>
+                  <CardDescription>
+                    Each player's most confident pick
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {loading ? (
@@ -844,19 +1038,24 @@ const LivePicks = () => {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {transformedPicks.map((user) => {
                         return (
-                          <div key={user.userId} className="p-4 border rounded-lg text-center">
-                                                      <div className="flex items-center justify-center gap-2 mb-2">
-                            <img
-                              src={user.userAvatar}
-                              alt={user.userName}
-                              className="w-8 h-8 rounded-full object-cover border-2 border-primary"
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                target.src = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face";
-                              }}
-                            />
-                            <span className="font-semibold">{user.userName}</span>
-                          </div>
+                          <div
+                            key={user.userId}
+                            className="p-4 border rounded-lg text-center"
+                          >
+                            <div className="flex items-center justify-center gap-2 mb-2">
+                              <img
+                                src={user.userAvatar}
+                                alt={user.userName}
+                                className="w-8 h-8 rounded-full object-cover border-2 border-primary"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.src = getUserAvatar(user.userName);
+                                }}
+                              />
+                              <span className="font-semibold">
+                                {user.userName}
+                              </span>
+                            </div>
                             <div className="bg-blue-900 text-white p-4 rounded-xl text-center font-bold text-lg relative shadow-lg border-2 border-blue-800">
                               <div className="flex flex-col items-center gap-2">
                                 <img
@@ -865,10 +1064,12 @@ const LivePicks = () => {
                                   className="w-8 h-8 rounded-full object-cover"
                                   onError={(e) => {
                                     const target = e.target as HTMLImageElement;
-                                    target.style.display = 'none';
+                                    target.style.display = "none";
                                   }}
                                 />
-                                <span className="text-lg font-bold">{user.lock.team}</span>
+                                <span className="text-lg font-bold">
+                                  {user.lock.team}
+                                </span>
                               </div>
                               {user.lock.isCorrect && (
                                 <div className="absolute -top-2 -right-2">
@@ -885,111 +1086,126 @@ const LivePicks = () => {
                   )}
                 </CardContent>
               </Card>
-        </TabsContent>
+            </TabsContent>
 
             <TabsContent value="td-scorers" className="space-y-4">
-          <Card>
-            <CardHeader>
+              <Card>
+                <CardHeader>
                   <CardTitle>Touchdown Scorers</CardTitle>
-                  <CardDescription>Player touchdown scorer predictions</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-                  <p className="text-gray-600 mt-2">Loading picks...</p>
-                          </div>
-              ) : transformedPicks.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-600">No picks data available</p>
-                            </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {transformedPicks.map((user) => (
-                    <div key={user.userId} className="text-center">
-                      <div className="flex items-center justify-center gap-2 mb-3">
-                        <img
-                          src={user.userAvatar}
-                          alt={user.userName}
-                          className="w-8 h-8 rounded-full object-cover border-2 border-primary"
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.src = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face";
-                          }}
-                        />
-                        <span className="font-semibold">{user.userName}</span>
-                      </div>
-                      <div className="relative">
-                        {user.tdScorer.playerHeadshot ? (
-                          <img
-                            src={user.tdScorer.playerHeadshot}
-                            alt={user.tdScorer.player}
-                            className="w-20 h-20 rounded-full mx-auto mb-2 object-cover border-2 border-gray-300"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.src = "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=100&h=100&fit=crop&crop=face";
-                            }}
-                          />
-                        ) : (
-                          <div className="w-20 h-20 bg-gray-200 rounded-full mx-auto mb-2 flex items-center justify-center text-3xl">
-                            🏈
-                          </div>
-                        )}
-                        {getOutcomeIcon(user.tdScorer.isCorrect)}
-                        <p className="text-lg font-semibold mt-2">{user.tdScorer.player}</p>
-                        </div>
+                  <CardDescription>
+                    Player touchdown scorer predictions
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                      <p className="text-gray-600 mt-2">Loading picks...</p>
                     </div>
-                  ))}
-              </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                  ) : transformedPicks.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-600">No picks data available</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {transformedPicks.map((user) => (
+                        <div key={user.userId} className="text-center">
+                          <div className="flex items-center justify-center gap-2 mb-3">
+                            <img
+                              src={user.userAvatar}
+                              alt={user.userName}
+                              className="w-8 h-8 rounded-full object-cover border-2 border-primary"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.src = getUserAvatar(user.userName);
+                              }}
+                            />
+                            <span className="font-semibold">
+                              {user.userName}
+                            </span>
+                          </div>
+                          <div className="relative">
+                            {user.tdScorer.playerHeadshot ? (
+                              <img
+                                src={user.tdScorer.playerHeadshot}
+                                alt={user.tdScorer.player}
+                                className="w-20 h-20 rounded-full mx-auto mb-2 object-cover border-2 border-gray-300"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.src = getUserAvatar(user.userName);
+                                }}
+                              />
+                            ) : (
+                              <div className="w-20 h-20 bg-gray-200 rounded-full mx-auto mb-2 flex items-center justify-center text-3xl">
+                                🏈
+                              </div>
+                            )}
+                            {getOutcomeIcon(user.tdScorer.isCorrect)}
+                            <p className="text-lg font-semibold mt-2">
+                              {user.tdScorer.player}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
 
             <TabsContent value="prop-bets" className="space-y-4">
-          <Card>
-            <CardHeader>
+              <Card>
+                <CardHeader>
                   <CardTitle>Prop Bets</CardTitle>
-                  <CardDescription>Custom proposition bets from players</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-                  <p className="text-gray-600 mt-2">Loading picks...</p>
-                          </div>
-              ) : transformedPicks.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-600">No picks data available</p>
-                              </div>
-                            ) : (
-                <div className="space-y-4">
-                  {transformedPicks.map((user) => (
-                    <div key={user.userId} className="p-4 border rounded-lg relative">
-                                              <div className="flex items-center gap-3 mb-2">
-                          <img
-                            src={user.userAvatar}
-                            alt={user.userName}
-                            className="w-8 h-8 rounded-full object-cover border-2 border-primary"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.src = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face";
-                            }}
-                          />
-                          <span className="font-semibold">{user.userName}</span>
-                        </div>
-                      <div className="bg-gray-50 p-3 rounded-lg">
-                        <p className="font-medium">{user.propBet.description}</p>
-                      </div>
-                      {getOutcomeIcon(user.propBet.isCorrect)}
+                  <CardDescription>
+                    Custom proposition bets from players
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                      <p className="text-gray-600 mt-2">Loading picks...</p>
                     </div>
-                  ))}
-                              </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                  ) : transformedPicks.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-600">No picks data available</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {transformedPicks.map((user) => (
+                        <div
+                          key={user.userId}
+                          className="p-4 border rounded-lg relative"
+                        >
+                          <div className="flex items-center gap-3 mb-2">
+                            <img
+                              src={user.userAvatar}
+                              alt={user.userName}
+                              className="w-8 h-8 rounded-full object-cover border-2 border-primary"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.src = getUserAvatar(user.userName);
+                              }}
+                            />
+                            <span className="font-semibold">
+                              {user.userName}
+                            </span>
+                          </div>
+                          <div className="bg-gray-50 p-3 rounded-lg">
+                            <p className="font-medium">
+                              {user.propBet.description}
+                            </p>
+                          </div>
+                          {getOutcomeIcon(user.propBet.isCorrect)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </div>
