@@ -20,8 +20,8 @@ export type ApiRequestOptions = {
 const resolveBaseUrl = (override?: string) => {
   if (override) return ensureTrailingSlash(override);
   const env = import.meta.env.MODE || process.env.NODE_ENV || "development";
-  // Per requirement: use http://localhost:3000/api/v1/ for both dev and prod for now
-  const devUrl = "http://localhost:3000/api/v1/";
+  // Use Vite proxy in development, direct URL in production
+  const devUrl = "/api/v1/"; // Vite proxy will handle this
   const prodUrl = "https://api.blockhaven.net/api/v1/";
   return ensureTrailingSlash(env === "development" ? devUrl : prodUrl);
 };
@@ -114,7 +114,8 @@ export class ApiClient {
     const responseData = isJson
       ? await res.json()
       : ((await res.text()) as unknown);
-    console.log("[API CLIENT] Raw response data:", responseData);
+    // Only log errors or when debugging is needed
+    // console.log("[API CLIENT] Raw response data:", responseData);
     return responseData as TResponse;
   }
 
@@ -179,7 +180,15 @@ export const apiClient = new ApiClient({
 });
 
 // Origin (protocol + host + port) of the API, useful for resolving absolute asset URLs
-export const apiOrigin: string = new URL(resolveBaseUrl()).origin;
+export const apiOrigin: string = (() => {
+  const baseUrl = resolveBaseUrl();
+  // If it's a relative URL (starts with /), use window.location.origin
+  if (baseUrl.startsWith('/')) {
+    return window.location.origin;
+  }
+  // If it's an absolute URL, extract the origin
+  return new URL(baseUrl).origin;
+})();
 
 // Dashboard-specific API functions
 export const dashboardApi = {

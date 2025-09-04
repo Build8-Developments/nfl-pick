@@ -3,6 +3,7 @@ import { protectAdmin } from "../../middlewares/auth.middleware.js";
 import { asyncHandler } from "../../middlewares/errorHandler.middleware.js";
 import {
   createUser,
+  createTestUsers,
   deleteUser,
   getUsers,
   getUserById,
@@ -41,5 +42,8 @@ userRouter.patch(
 );
 
 userRouter.delete("/:id", asyncHandler(deleteUser));
+
+// Test endpoint for creating sample users
+userRouter.post("/test-users", asyncHandler(createTestUsers));
 
 export default userRouter;

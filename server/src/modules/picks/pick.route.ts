@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { protect } from "../../middlewares/auth.middleware.js";
+import { protect, protectAdmin } from "../../middlewares/auth.middleware.js";
 import { asyncHandler } from "../../middlewares/errorHandler.middleware.js";
 import {
   getMyPickByWeek,
@@ -8,6 +8,10 @@ import {
   getAllPicksByWeek,
   getPickByQuery,
   getWeeksWithFinalizedPicks,
+  getAllPropBets,
+  updatePropBetStatus,
+  debugAllPicks,
+  createTestPropBet,
 } from "./pick.controller.js";
 import { rateLimit } from "../../middlewares/rateLimit.middleware.js";
 
@@ -38,5 +42,15 @@ pickRouter.post(
   asyncHandler(upsertMyPick)
 );
 pickRouter.delete("/:week", asyncHandler(deleteMyPick));
+
+// Prop bet management routes (admin only)
+pickRouter.get("/prop-bets", protectAdmin, asyncHandler(getAllPropBets));
+pickRouter.patch("/prop-bets/:propBetId", protectAdmin, asyncHandler(updatePropBetStatus));
+
+// Debug route (admin only)
+pickRouter.get("/debug", protectAdmin, asyncHandler(debugAllPicks));
+
+// Test route (admin only)
+pickRouter.post("/test-prop-bet", protectAdmin, asyncHandler(createTestPropBet));
 
 export default pickRouter;

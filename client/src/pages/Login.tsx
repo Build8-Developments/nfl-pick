@@ -12,14 +12,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { users as mockUsers } from "../data/mockData";
+// Removed mock data import - using real API authentication
 
 const Login = () => {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { login, currentUser, devLoginMock } = useAuth();
+  const { login, currentUser } = useAuth();
   const navigate = useNavigate();
 
   if (currentUser) {
@@ -44,7 +44,7 @@ const Login = () => {
 
   const handleQuickLogin = (email: string, name: string, isAdmin: boolean) => {
     devLoginMock({
-      id: Math.floor(Math.random() * 1000000).toString(),
+      id: Math.floor(Math.random() * 1000000),
       name,
       email,
       isAdmin,
@@ -97,25 +97,7 @@ const Login = () => {
             </Button>
           </form>
 
-          {/* Quick login buttons for demo */}
-          <div className="mt-6 pt-6 border-t">
-            <p className="text-sm text-muted-foreground mb-3 text-center">
-              Quick login (Demo):
-            </p>
-            <div className="space-y-2">
-              {mockUsers.map((u) => (
-                <Button
-                  key={u.id}
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => handleQuickLogin(u.email, u.name, u.isAdmin)}
-                >
-                  Login as {u.name} {u.isAdmin ? "(Admin)" : ""}
-                </Button>
-              ))}
-            </div>
-          </div>
+          {/* Removed quick login demo buttons - using real API authentication */}
         </CardContent>
       </Card>
     </div>

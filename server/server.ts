@@ -16,7 +16,6 @@ import {
   syncAllPlayers,
   syncBettingOddsForAllGames,
 } from "./src/modules/sync/sync.service.js";
-import { resolveWeek } from "./src/modules/scoring/scoring.service.js";
 
 const server = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -43,11 +42,16 @@ server.use(
 );
 server.use(
   cors({
-    // Reflect request origin (required when using credentials)
-    origin: true,
+    // Allow specific origins for development
+    origin: [
+      "http://localhost:5173", // Vite dev server
+      "http://localhost:3000", // Backend server
+      "http://127.0.0.1:5173",
+      "http://127.0.0.1:3000",
+    ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "Last-Event-ID"],
     maxAge: 86400,
     optionsSuccessStatus: 204,
   })
