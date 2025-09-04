@@ -44,7 +44,7 @@ const Login = () => {
 
   const handleQuickLogin = (email: string, name: string, isAdmin: boolean) => {
     devLoginMock({
-      id: Math.floor(Math.random() * 1000000),
+      id: Math.floor(Math.random() * 1000000).toString(),
       name,
       email,
       isAdmin,
