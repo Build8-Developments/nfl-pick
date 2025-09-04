@@ -132,8 +132,8 @@ Thumbs.db
 .vite/
 
 # Express specific
-uploads/
-public/uploads/
+/client/uploads/
+/client/public/uploads/
 
 # Database
 *.db

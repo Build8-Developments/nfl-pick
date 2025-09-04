@@ -38,7 +38,8 @@ export const createUser = async (req: Request, res: Response) => {
 
         // Create user with avatar path
         const avatarPath = `/uploads/avatars/${filename}`;
-        const userDataWithAvatar = { ...req.body, avatar: avatarPath };
+        const userDataWithAvatar = { ...req.body, avatar: avatarPath } as any;
+        if (!userDataWithAvatar.email) delete userDataWithAvatar.email;
         const user = await userService.createUser(userDataWithAvatar);
 
         res
@@ -55,7 +56,9 @@ export const createUser = async (req: Request, res: Response) => {
       }
     } else {
       // No files, create user without avatar (existing behavior)
-      const user = await userService.createUser(req.body);
+      const payload = { ...(req.body as any) };
+      if (!payload.email) delete payload.email;
+      const user = await userService.createUser(payload);
       res
         .status(201)
         .json(ApiResponse.success(user, "User created successfully"));

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -6,33 +6,360 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
 import {
-  Clock,
-  Lock,
-  Eye,
-  RefreshCw,
-  Play,
-  AlertTriangle,
-} from "lucide-react";
-import { currentWeekGames, mockUserPicks, users, scoringSystem } from "../data/mockData";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { RefreshCw, AlertTriangle, Check, X } from "lucide-react";
+import { apiClient } from "@/lib/api";
+import type { ITeam } from "@/types/team.type";
+import type { IPlayer } from "@/types/player.type";
+import type { IGame } from "@/types/game.type";
+import { memCache } from "@/lib/memCache";
+import { useAuth } from "../contexts/useAuth";
 
 const LivePicks = () => {
-  const [activeTab, setActiveTab] = useState("overview");
+  useAuth();
+  const [activeTab, setActiveTab] = useState("spreads");
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [justUpdated, setJustUpdated] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
+  const [availableWeeks, setAvailableWeeks] = useState<number[]>([]);
+  const [teams, setTeams] = useState<ITeam[]>([]);
+  const [players, setPlayers] = useState<IPlayer[]>([]);
+  const [loading, setLoading] = useState(true);
+  type BackendPick = {
+    _id: string;
+    user: { _id: string; username: string; avatar: string } | string;
+    week: number;
+    selections: Record<string, string>;
+    outcomes?: Record<string, boolean | null>;
+    lockOfWeek?: string;
+    touchdownScorer?: string;
+    propBet?: string;
+    propBetOdds?: string;
+    isFinalized?: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+  };
+  const [allPicks, setAllPicks] = useState<BackendPick[]>([]);
+  const isFetchingRef = useRef(false);
+  const lastFetchAtRef = useRef(0);
 
-  const currentWeek = 10;
+  const parseGameDateTime = (gameDate: string, gameTime: string) => {
+    const yyyy = Number(gameDate.slice(0, 4));
+    const mm = Number(gameDate.slice(4, 6));
+    const dd = Number(gameDate.slice(6, 8));
+    const m = gameTime.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
+    let hours = 12;
+    let minutes = 0;
+    if (m) {
+      hours = Number(m[1]);
+      minutes = m[2] ? Number(m[2]) : 0;
+      const meridiem = (m?.[3] ?? "a").toLowerCase();
+      if (meridiem === "p" && hours !== 12) hours += 12;
+      if (meridiem === "a" && hours === 12) hours = 0;
+    }
+    return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
+  };
+
+  // Load teams/players and infer current week from games cache if available
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Check cache first
+        const cachedTeams = memCache.get<ITeam[]>("teams");
+        // const cachedPlayers = memCache.get<IPlayer[]>("players");
+        const cachedGames = memCache.get<IGame[]>("games");
+
+        if (cachedTeams) {
+          setTeams(cachedTeams);
+          if (cachedGames && cachedGames.length > 0) {
+            const weekNums = cachedGames
+              .map((g) => g.gameWeek)
+              .map((w) =>
+                typeof w === "string" ? w.match(/\d+/)?.[0] : undefined
+              )
+              .filter((n): n is string => Boolean(n))
+              .map((n) => Number(n))
+              .filter((n) => !Number.isNaN(n));
+            if (weekNums.length) {
+              const cachedWeeksWithPicks =
+                memCache.get<number[]>("weeks:withPicks") || [];
+              const uniqueWeeks = [
+                ...new Set([...weekNums, ...cachedWeeksWithPicks]),
+              ].sort((a, b) => a - b);
+              setAvailableWeeks(uniqueWeeks);
+              const now = new Date();
+              const weeksWithKickoffs = uniqueWeeks.map((wk) => {
+                const gamesForWeek = cachedGames.filter((g) => {
+                  const num = Number(
+                    (g.gameWeek || "").match(/\d+/)?.[0] ?? NaN
+                  );
+                  return !Number.isNaN(num) && num === wk;
+                });
+                const hasUpcoming = gamesForWeek.some((g) => {
+                  const dt = parseGameDateTime(
+                    g.gameDate as string,
+                    g.gameTime as string
+                  );
+                  return now <= new Date(dt.getTime() + 15 * 60 * 1000);
+                });
+                return { wk, hasUpcoming };
+              });
+              const upcoming = weeksWithKickoffs.find((w) => w.hasUpcoming)?.wk;
+              const chosen = upcoming ?? Math.max(...uniqueWeeks);
+              setSelectedWeek(chosen);
+              // Fetch finalized-picks weeks in background and merge
+              apiClient
+                .get<{ success: boolean; data?: number[] }>("picks/weeks")
+                .then((res) => {
+                  const weeks = Array.isArray(res.data) ? res.data : [];
+                  memCache.set("weeks:withPicks", weeks);
+                  setAvailableWeeks((prev) => {
+                    const merged = [
+                      ...new Set([...(prev || []), ...weeks]),
+                    ].sort((a, b) => a - b);
+                    return merged;
+                  });
+                })
+                .catch(() => {});
+            } else {
+              setSelectedWeek((prev) => prev ?? 1);
+            }
+            setLoading(false);
+            return;
+          }
+
+          // Teams cached but games not cached: fetch games to determine week
+          const gamesRes = await apiClient.get<{
+            success: boolean;
+            data?: IGame[];
+          }>("games");
+          const gameList = Array.isArray(gamesRes.data)
+            ? (gamesRes.data as IGame[])
+            : [];
+          memCache.set("games", gameList);
+          if (gameList.length) {
+            const weekNums = gameList
+              .map((g) => g.gameWeek)
+              .map((w) =>
+                typeof w === "string" ? w.match(/\d+/)?.[0] : undefined
+              )
+              .filter((n): n is string => Boolean(n))
+              .map((n) => Number(n))
+              .filter((n) => !Number.isNaN(n));
+            if (weekNums.length) {
+              const cachedWeeksWithPicks =
+                memCache.get<number[]>("weeks:withPicks") || [];
+              const uniqueWeeks = [
+                ...new Set([...weekNums, ...cachedWeeksWithPicks]),
+              ].sort((a, b) => a - b);
+              setAvailableWeeks(uniqueWeeks);
+              const now = new Date();
+              const weeksWithKickoffs = uniqueWeeks.map((wk) => {
+                const gamesForWeek = gameList.filter((g) => {
+                  const num = Number(
+                    (g.gameWeek || "").match(/\d+/)?.[0] ?? NaN
+                  );
+                  return !Number.isNaN(num) && num === wk;
+                });
+                const hasUpcoming = gamesForWeek.some((g) => {
+                  const dt = parseGameDateTime(
+                    g.gameDate as string,
+                    g.gameTime as string
+                  );
+                  return now <= new Date(dt.getTime() + 15 * 60 * 1000);
+                });
+                return { wk, hasUpcoming };
+              });
+              const upcoming = weeksWithKickoffs.find((w) => w.hasUpcoming)?.wk;
+              const chosen = upcoming ?? Math.max(...uniqueWeeks);
+              setSelectedWeek(chosen);
+              try {
+                const weeksRes = await apiClient.get<{
+                  success: boolean;
+                  data?: number[];
+                }>("picks/weeks");
+                const weeks = Array.isArray(weeksRes.data) ? weeksRes.data : [];
+                memCache.set("weeks:withPicks", weeks);
+                setAvailableWeeks((prev) => {
+                  const merged = [...new Set([...(prev || []), ...weeks])].sort(
+                    (a, b) => a - b
+                  );
+                  return merged;
+                });
+              } catch {
+                // ignore
+              }
+            } else {
+              setSelectedWeek((prev) => prev ?? 1);
+            }
+          }
+          setLoading(false);
+          return;
+        }
+
+        // Fetch from API
+        const [teamsRes, playersRes, weeksRes] = await Promise.all([
+          apiClient.get<{ success: boolean; data?: ITeam[] }>("teams"),
+          apiClient.get<{ success: boolean; data?: { items: IPlayer[] } }>(
+            "players",
+            { query: { limit: 500 } }
+          ),
+          apiClient.get<{ success: boolean; data?: number[] }>("picks/weeks"),
+        ]);
+
+        const teamList = Array.isArray(teamsRes.data) ? teamsRes.data : [];
+
+        setTeams(teamList);
+        const playerList = Array.isArray(playersRes.data?.items)
+          ? playersRes.data.items
+          : [];
+        setPlayers(playerList);
+
+        // Cache the results
+        memCache.set("teams", teamList);
+        memCache.set("players", playerList);
+        const weeksWithPicks = Array.isArray(weeksRes.data)
+          ? weeksRes.data
+          : [];
+        memCache.set("weeks:withPicks", weeksWithPicks);
+
+        const gamesRes = await apiClient.get<{
+          success: boolean;
+          data?: IGame[];
+        }>("games");
+        const gameList = Array.isArray(gamesRes.data)
+          ? (gamesRes.data as IGame[])
+          : [];
+        memCache.set("games", gameList);
+        if (gameList.length) {
+          const weekNums = gameList
+            .map((g) => g.gameWeek)
+            .map((w) =>
+              typeof w === "string" ? w.match(/\d+/)?.[0] : undefined
+            )
+            .filter((n): n is string => Boolean(n))
+            .map((n) => Number(n))
+            .filter((n) => !Number.isNaN(n));
+          if (weekNums.length) {
+            const uniqueWeeks = [
+              ...new Set([...weekNums, ...weeksWithPicks]),
+            ].sort((a, b) => a - b);
+            setAvailableWeeks(uniqueWeeks);
+            const now = new Date();
+            const weeksWithKickoffs = uniqueWeeks.map((wk) => {
+              const gamesForWeek = gameList.filter((g) => {
+                const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
+                return !Number.isNaN(num) && num === wk;
+              });
+              const hasUpcoming = gamesForWeek.some((g) => {
+                const dt = parseGameDateTime(
+                  g.gameDate as string,
+                  g.gameTime as string
+                );
+                return now <= new Date(dt.getTime() + 15 * 60 * 1000);
+              });
+              return { wk, hasUpcoming };
+            });
+            const upcoming = weeksWithKickoffs.find((w) => w.hasUpcoming)?.wk;
+            const chosen = upcoming ?? Math.max(...uniqueWeeks);
+            setSelectedWeek(chosen);
+          } else {
+            setSelectedWeek((prev) => prev ?? 1);
+          }
+        }
+      } catch (err) {
+        console.error("Error loading data:", err);
+        setError("Failed to load data. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // Load all users' finalized picks for selected week
+  useEffect(() => {
+    if (!selectedWeek) return;
+    let active = true;
+    setIsRefreshing(true);
+    apiClient
+      .get<{ success?: boolean; data?: BackendPick[] }>(
+        `picks/all/${selectedWeek}`
+      )
+      .then((res) => {
+        if (!active) return;
+        setAllPicks(
+          Array.isArray(res?.data) ? (res.data as BackendPick[]) : []
+        );
+      })
+      .catch((err) => {
+        console.error("Error loading picks:", err);
+        if (!active) return;
+        setAllPicks([]);
+      })
+      .finally(() => {
+        if (!active) return;
+        setIsRefreshing(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedWeek]);
+
+  // Live SSE updates
+  useEffect(() => {
+    const streamUrl = `/api/v1/live-picks/stream`;
+    const es = new EventSource(streamUrl);
+    es.onmessage = () => {
+      if (!selectedWeek) return;
+      const now = Date.now();
+      // Debounce bursts (e.g., multiple events in quick succession)
+      if (now - lastFetchAtRef.current < 800) return;
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
+      lastFetchAtRef.current = now;
+      apiClient
+        .get<{ success?: boolean; data?: BackendPick[] }>(
+          `picks/all/${selectedWeek}`
+        )
+        .then((res) => {
+          setAllPicks(
+            Array.isArray(res?.data) ? (res.data as BackendPick[]) : []
+          );
+          setJustUpdated(true);
+          setTimeout(() => setJustUpdated(false), 2500);
+        })
+        .catch(() => {})
+        .finally(() => {
+          isFetchingRef.current = false;
+        });
+    };
+    es.onerror = () => {
+      es.close();
+    };
+    return () => es.close();
+  }, [selectedWeek]);
 
   // Simulate real-time updates
   useEffect(() => {
     const interval = setInterval(() => {
-      setLastUpdated(new Date());
-    }, 30000); // Update every 30 seconds
+      // Update every 30 seconds
+    }, 30000);
 
     return () => clearInterval(interval);
   }, []);
@@ -40,426 +367,847 @@ const LivePicks = () => {
   const handleRefresh = () => {
     setIsRefreshing(true);
     setError(null);
-    
-    // Simulate potential error during refresh
-    setTimeout(() => {
+
+    // Reload data
+    const loadData = async () => {
       try {
-        // In real app, this would be an API call
-        setLastUpdated(new Date());
-        setIsRefreshing(false);
-      } catch {
-        setError('Failed to refresh data. Please try again.');
+        const [teamsRes, playersRes] = await Promise.all([
+          apiClient.get<{ success: boolean; data?: ITeam[] }>("teams"),
+          apiClient.get<{ success: boolean; data?: { items: IPlayer[] } }>(
+            "players",
+            { query: { limit: 500 } }
+          ),
+        ]);
+        const teamList = Array.isArray(teamsRes.data) ? teamsRes.data : [];
+        setTeams(teamList);
+        memCache.set("teams", teamList);
+        const playerList = Array.isArray(playersRes.data?.items)
+          ? playersRes.data.items
+          : [];
+        setPlayers(playerList);
+        memCache.set("players", playerList);
+      } catch (err) {
+        console.error("Error refreshing data:", err);
+        setError("Failed to refresh data. Please try again.");
+      } finally {
         setIsRefreshing(false);
       }
-    }, 1000);
-  };
-
-  const formatGameTime = (gameTime: string) => {
-    return new Date(gameTime).toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  };
-
-  const getGameStatus = (game: { gameTime: string }) => {
-    const now = new Date();
-    const gameTime = new Date(game.gameTime);
-    const timeDiff = gameTime.getTime() - now.getTime();
-    const hoursDiff = timeDiff / (1000 * 60 * 60);
-
-    if (timeDiff < 0) {
-      return { status: "live", icon: Play, color: "bg-red-500", text: "LIVE" };
-    } else if (hoursDiff < 1) {
-      return { status: "starting", icon: Clock, color: "bg-orange-500", text: "STARTING SOON" };
-    } else if (hoursDiff < 24) {
-      return { status: "today", icon: Clock, color: "bg-blue-500", text: "TODAY" };
-    } else {
-      return { status: "upcoming", icon: Clock, color: "bg-gray-500", text: "UPCOMING" };
-    }
-  };
-
-  const getSpreadDisplay = (game: { spread: number; homeTeam?: { abbreviation: string }; awayTeam?: { abbreviation: string } }) => {
-    const spread = Math.abs(game.spread);
-    const favoredTeam = game.spread < 0 ? game.homeTeam : game.awayTeam;
-    const underdogTeam = game.spread < 0 ? game.awayTeam : game.homeTeam;
-
-    return {
-      favoredTeam: favoredTeam?.abbreviation || 'N/A',
-      underdogTeam: underdogTeam?.abbreviation || 'N/A',
-      spread: spread,
     };
+
+    loadData();
   };
 
-  const getUserPickForGame = (userId: number, gameId: number) => {
-    const userPick = mockUserPicks.find(pick => pick.userId === userId);
-    if (!userPick) return null;
-    
-    const gamePick = userPick.picks.find(pick => pick.gameId === gameId);
-    return gamePick?.selectedTeam || null;
+  // State to store users for avatar lookup
+  const [users, setUsers] = useState<
+    Array<{ _id: string; username: string; avatar: string }>
+  >([]);
+  // State to store individual player data for TD scorers
+  const [playerData, setPlayerData] = useState<Record<string, IPlayer>>({});
+
+  // Fetch users from backend
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const response = await apiClient.get<{
+          success: boolean;
+          data?: Array<{ _id: string; username: string; avatar: string }>;
+        }>("users");
+        if (response.data && Array.isArray(response.data)) {
+          setUsers(response.data);
+        }
+      } catch (error) {
+        console.error("Error fetching users:", error);
+      }
+    };
+    fetchUsers();
+  }, []);
+
+  // Function to fetch individual player data
+  const fetchPlayerData = useCallback(
+    async (playerId: string) => {
+      if (!playerId || playerData[playerId]) return; // Already fetched or no ID
+
+      try {
+        const response = await apiClient.get<{
+          success: boolean;
+          data?: IPlayer;
+        }>(`players/${playerId}`);
+        if (response.data) {
+          setPlayerData((prev) => ({
+            ...prev,
+            [playerId]: response.data!,
+          }));
+        }
+      } catch (error) {
+        console.error(`Error fetching player ${playerId}:`, error);
+      }
+    },
+    [playerData]
+  );
+
+  // Helper function to get user avatar from backend
+  const getUserAvatar = useCallback(
+    (userName: string) => {
+      const user = users.find((u) => u.username === userName);
+      if (user && user.avatar) {
+        // Construct the full URL for the avatar
+        return `http://localhost:3000${user.avatar}`;
+      }
+
+      // Fallback to default avatar if user not found or no avatar
+      return "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face";
+    },
+    [users]
+  );
+
+  // Player helpers
+  const getPlayerById = useCallback(
+    (id: string) => {
+      return players.find((p) => String(p.playerID) === String(id));
+    },
+    [players]
+  );
+  const getPlayerHeadshot = (player: IPlayer | undefined) => {
+    if (!player) return null;
+    if (player.espnHeadshot && player.espnHeadshot.trim() !== "")
+      return player.espnHeadshot;
+    return `https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=100&h=100&fit=crop&crop=face`;
   };
 
-  const getLockOfWeekForUser = (userId: number) => {
-    const userPick = mockUserPicks.find(pick => pick.userId === userId);
-    return userPick?.lockOfWeek || null;
+  // Transform backend picks for display using real data (no mocks)
+  type DisplayUserPicks = {
+    userId: string;
+    userName: string;
+    userAvatar: string;
+    picks: { team: string; isCorrect: boolean }[];
+    lock: { team: string; isCorrect: boolean };
+    tdScorer: {
+      player: string;
+      playerId: string;
+      playerHeadshot: string | null;
+      isCorrect: boolean;
+    };
+    propBet: { description: string; isCorrect: boolean };
+    totalPoints: number;
   };
 
+  const transformedPicks = useMemo<DisplayUserPicks[]>(() => {
+    const base = allPicks ? [...allPicks] : [];
+    if (base.length === 0) return [];
+    return base.map((p: BackendPick): DisplayUserPicks => {
+      const outcomesArray = Object.entries(p.selections || {}).map(
+        ([gid, team]) => {
+          const ok = p.outcomes ? p.outcomes[gid] : null;
+          return { team: team as string, isCorrect: ok === true };
+        }
+      );
+      const userId =
+        typeof p.user === "string" ? p.user : p.user?._id || "unknown";
+      const userName =
+        typeof p.user === "string" ? "User" : p.user?.username || "User";
+      const userAvatar =
+        typeof p.user === "string"
+          ? getUserAvatar("U")
+          : p.user?.avatar
+          ? `http://localhost:3000${p.user.avatar}`
+          : getUserAvatar(userName || "U");
+      return {
+        userId,
+        userName,
+        userAvatar,
+        picks: outcomesArray,
+        lock: { team: (p.lockOfWeek as string) || "", isCorrect: false },
+        tdScorer: {
+          player:
+            playerData[p.touchdownScorer || ""]?.longName ||
+            getPlayerById(p.touchdownScorer || "")?.longName ||
+            p.touchdownScorer ||
+            "",
+          playerId: p.touchdownScorer || "",
+          playerHeadshot:
+            playerData[p.touchdownScorer || ""]?.espnHeadshot ||
+            getPlayerHeadshot(getPlayerById(p.touchdownScorer || "")),
+          isCorrect: false,
+        },
+        propBet: { description: p.propBet || "", isCorrect: false },
+        totalPoints: 0,
+      };
+    });
+  }, [allPicks, getPlayerById, getUserAvatar, playerData]);
 
+  // Fetch player data for TD scorers when picks are loaded
+  useEffect(() => {
+    if (allPicks.length > 0) {
+      allPicks.forEach((pick) => {
+        if (pick.touchdownScorer) {
+          fetchPlayerData(pick.touchdownScorer);
+        }
+      });
+    }
+  }, [allPicks, fetchPlayerData]);
 
-  const calculateUserScore = (userId: number) => {
-    const userPick = mockUserPicks.find(pick => pick.userId === userId);
-    if (!userPick) return 0;
+  // Helper function to get team logo
+  const getTeamLogo = (teamAbv: string) => {
+    const team = teams.find((t) => t.teamAbv === teamAbv);
+    if (team?.espnLogo1) {
+      return team.espnLogo1;
+    }
+    if (team?.nflComLogo1) {
+      return team.nflComLogo1;
+    }
+    // Fallback to a generic NFL logo
+    return "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=100&h=100&fit=crop&crop=face";
+  };
 
-    let score = 0;
-    // This would be calculated based on actual game results
-    // For now, showing placeholder
-    score += userPick.picks.length; // 1 point per pick
-    if (userPick.lockOfWeek) score += scoringSystem.correctLockOfWeek;
-    if (userPick.touchdownScorer) score += scoringSystem.correctTouchdownScorer;
-    if (userPick.propBet) score += scoringSystem.correctPropBet;
-
-    return score;
+  const getOutcomeIcon = (isCorrect: boolean) => {
+    return isCorrect ? (
+      <Check className="h-6 w-6 text-green-500" />
+    ) : (
+      <X className="h-6 w-6 text-red-500" />
+    );
   };
 
   return (
-    <div className="space-y-6">
-      {/* Error Display */}
-      {error && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Live Picks Tracking</h1>
-          <p className="text-muted-foreground mt-1">
-            Week {currentWeek} • Real-time picks from all players
-          </p>
-        </div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
-          <div className="text-sm text-muted-foreground">
-            Last updated: {lastUpdated.toLocaleTimeString()}
+    <div className="min-h-screen bg-white">
+      {/* Header with week selector and manual refresh */}
+      <div className="bg-white text-gray-900 px-4 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-xl font-bold text-black">Live Picks</h1>
+              <p className="text-sm text-gray-600">Compare all users by week</p>
+            </div>
+            {availableWeeks.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Label
+                  htmlFor="week-selector"
+                  className="text-sm text-gray-700"
+                >
+                  Select Week:
+                </Label>
+                <Select
+                  value={selectedWeek?.toString() || ""}
+                  onValueChange={(value) => setSelectedWeek(Number(value))}
+                >
+                  <SelectTrigger id="week-selector" className="w-28">
+                    <SelectValue placeholder="Week" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableWeeks.map((w) => (
+                      <SelectItem key={w} value={w.toString()}>
+                        Week {w}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {justUpdated && (
+                  <span className="ml-2 text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 border border-green-300">
+                    Updated
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={handleRefresh}
             disabled={isRefreshing}
+            className="ml-4 text-gray-700 hover:bg-gray-100 border border-gray-300"
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-            Refresh
+            <RefreshCw
+              className={`h-5 w-5 ${isRefreshing ? "animate-spin" : ""}`}
+            />
           </Button>
         </div>
       </div>
 
-      {/* Live Status Overview */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Eye className="h-5 w-5" />
-            Live Status Overview
-          </CardTitle>
-          <CardDescription>
-            Current week status and player participation
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="text-center p-4 border rounded-lg">
-              <div className="text-2xl font-bold text-primary">{currentWeekGames.length}</div>
-              <div className="text-sm text-muted-foreground">Total Games</div>
-            </div>
-            <div className="text-center p-4 border rounded-lg">
-              <div className="text-2xl font-bold text-green-600">{users.length}</div>
-              <div className="text-sm text-muted-foreground">Players</div>
-            </div>
-            <div className="text-center p-4 border rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">
-                {mockUserPicks.filter(pick => pick.isFinalized).length}
-              </div>
-              <div className="text-sm text-muted-foreground">Picks Submitted</div>
-            </div>
-            <div className="text-center p-4 border rounded-lg">
-              <div className="text-2xl font-bold text-orange-600">
-                {currentWeekGames.filter(game => getGameStatus(game).status === "live").length}
-              </div>
-              <div className="text-sm text-muted-foreground">Live Games</div>
-            </div>
+      {/* Error Display */}
+      {error && (
+        <div className="mx-4 mt-4">
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <div className="px-4 py-6 space-y-6">
+        {/* Loading State */}
+        {loading && (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+            <p className="text-gray-600 mt-2">Loading picks data...</p>
           </div>
-        </CardContent>
-      </Card>
+        )}
 
-      {/* Main Content Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="games">Games</TabsTrigger>
-          <TabsTrigger value="players">Players</TabsTrigger>
-          <TabsTrigger value="picks">All Picks</TabsTrigger>
-        </TabsList>
+        {/* No Data State */}
+        {!loading && transformedPicks.length === 0 && (
+          <div className="text-center py-8">
+            <p className="text-gray-600">No picks data available</p>
+          </div>
+        )}
 
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Week {currentWeek} Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {currentWeekGames.map((game) => {
-                  const gameStatus = getGameStatus(game);
-                  const spreadInfo = getSpreadDisplay(game);
+        {/* Spreads: 3 user avatars as column headers, rows per game with larger logos */}
+        {!loading && transformedPicks.length > 0 && (
+          <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl p-4 shadow-sm border border-gray-100">
+            <h2 className="text-lg font-bold text-gray-800 mb-4">SPREADS</h2>
 
-                  return (
-                    <div key={game.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-3 h-3 rounded-full ${gameStatus.color}`}></div>
-                        <div>
-                          <div className="font-medium">
-                            {game.awayTeam?.abbreviation} @ {game.homeTeam?.abbreviation}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {formatGameTime(game.gameTime)}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-sm">
-                          <span className="font-medium">{spreadInfo.favoredTeam}</span>
-                          <span className="text-muted-foreground"> -{spreadInfo.spread}</span>
-                        </div>
-                        <Badge variant="secondary" className="text-xs">
-                          {gameStatus.text}
-                        </Badge>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            {/* Header avatars aligned with columns */}
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {transformedPicks.map((user) => (
+                <div
+                  key={user.userId}
+                  className="flex items-center justify-center"
+                >
+                  <img
+                    src={user.userAvatar}
+                    alt={user.userName}
+                    className="w-12 h-12 rounded-full object-cover border-2 border-gray-300 shadow"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.src = getUserAvatar(user.userName);
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
 
-        {/* Games Tab */}
-        <TabsContent value="games" className="space-y-4">
-          {currentWeekGames.map((game) => {
-            const gameStatus = getGameStatus(game);
-            const spreadInfo = getSpreadDisplay(game);
-
-            return (
-              <Card key={game.id}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CardTitle>
-                        {game.awayTeam?.abbreviation} @ {game.homeTeam?.abbreviation}
-                      </CardTitle>
-                    </div>
-                    <Badge variant="secondary">
-                      {gameStatus.text}
-                    </Badge>
-                  </div>
-                  <CardDescription>
-                    {formatGameTime(game.gameTime)} • {spreadInfo.favoredTeam} -{spreadInfo.spread}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="text-sm text-muted-foreground">
-                      Player picks for this game:
-                    </div>
-                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {/* Game rows: each cell shows the user's pick for that match */}
+            {(() => {
+              const users = transformedPicks;
+              const maxGames = Math.max(...users.map((u) => u.picks.length));
+              return (
+                <div className="space-y-3">
+                  {Array.from({ length: maxGames }).map((_, gameIdx) => (
+                    <div key={gameIdx} className="grid grid-cols-3 gap-3">
                       {users.map((user) => {
-                        const userPick = getUserPickForGame(user.id, game.id);
-                        const isLock = getLockOfWeekForUser(user.id)?.gameId === game.id;
-                        
+                        const pick = user.picks[gameIdx];
+                        if (!pick) {
+                          return (
+                            <div
+                              key={user.userId}
+                              className="h-16 rounded-xl bg-gray-100 border border-gray-200"
+                            />
+                          );
+                        }
+                        const teamLogo = getTeamLogo(pick.team);
+                        // Use navy blue colors by default
+                        const bgClass = "bg-blue-900 text-white";
+                        const borderClass = "border-blue-800";
                         return (
-                          <div key={user.id} className="flex items-center gap-2 p-2 border rounded text-sm">
-                            <span className="font-medium">{user.name}</span>
-                            {userPick ? (
-                              <Badge variant={isLock ? "default" : "secondary"} className="text-xs">
-                                {userPick} {isLock && <Lock className="h-3 w-3 ml-1" />}
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-xs">
-                                No Pick
-                              </Badge>
-                            )}
+                          <div
+                            key={user.userId}
+                            className={`${bgClass} p-3 rounded-xl text-center font-bold text-sm shadow-md border-2 ${borderClass} flex flex-col items-center justify-center`}
+                          >
+                            <img
+                              src={teamLogo}
+                              alt={pick.team}
+                              className="w-10 h-10 rounded-full object-cover mb-1"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = "none";
+                              }}
+                            />
+                            <span className="text-xs font-bold">
+                              {pick.team}
+                            </span>
                           </div>
                         );
                       })}
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </TabsContent>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
-        {/* Players Tab */}
-        <TabsContent value="players" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Player Picks Summary</CardTitle>
-              <CardDescription>
-                Complete picks breakdown for each player
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {users.map((user) => {
-                  const userPick = mockUserPicks.find(pick => pick.userId === user.id);
-                  const score = calculateUserScore(user.id);
-                  
-                  return (
-                    <div key={user.id} className="p-4 border rounded-lg">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white font-bold">
-                            {user.name.charAt(0)}
-                          </div>
-                          <div>
-                            <div className="font-medium">{user.name}</div>
-                            <div className="text-sm text-muted-foreground">
-                              Season: {user.seasonRecord.wins}-{user.seasonRecord.losses} ({user.seasonRecord.percentage})
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-2xl font-bold text-primary">{score}</div>
-                          <div className="text-sm text-muted-foreground">Points</div>
+        {/* Enhanced Lock Section */}
+        {!loading && transformedPicks.length > 0 && (
+          <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-4 shadow-sm border border-yellow-100">
+            <h2 className="text-lg font-bold text-gray-800 mb-4">
+              LOCK OF THE WEEK
+            </h2>
+            <div className="grid grid-cols-3 gap-3">
+              {transformedPicks.map((user) => {
+                const teamLogo = getTeamLogo(user.lock.team);
+                return (
+                  <div
+                    key={user.userId}
+                    className="bg-blue-900 text-white p-4 rounded-xl text-center font-bold text-sm relative shadow-lg border-2 border-blue-800"
+                  >
+                    <div className="flex flex-col items-center gap-2">
+                      <img
+                        src={teamLogo}
+                        alt={user.lock.team}
+                        className="w-8 h-8 rounded-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = "none";
+                        }}
+                      />
+                      <span className="text-sm font-bold">
+                        {user.lock.team}
+                      </span>
+                      <div className="text-xs opacity-75">{user.userName}</div>
+                    </div>
+                    {user.lock.isCorrect && (
+                      <div className="absolute -top-2 -right-2">
+                        <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
+                          <Check className="h-4 w-4 text-white" />
                         </div>
                       </div>
-                      
-                      {userPick && (
-                                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                          <div>
-                            <div className="text-sm font-medium mb-2">Spread Picks:</div>
-                            <div className="flex flex-wrap gap-1">
-                              {userPick.picks.map((pick) => (
-                                <Badge key={pick.gameId} variant="outline" className="text-xs">
-                                  {pick.selectedTeam}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="text-sm">
-                              <span className="font-medium">Lock:</span> {userPick.lockOfWeek?.selectedTeam}
-                            </div>
-                            <div className="text-sm">
-                              <span className="font-medium">TD Scorer:</span> {userPick.touchdownScorer?.playerName}
-                            </div>
-                            <div className="text-sm">
-                              <span className="font-medium">Prop Bet:</span> {userPick.propBet?.description}
-                            </div>
-                          </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Enhanced TD Scorer Section */}
+        {!loading && transformedPicks.length > 0 && (
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 shadow-sm border border-green-100">
+            <h2 className="text-lg font-bold text-gray-800 mb-4">
+              TOUCHDOWN SCORER
+            </h2>
+            <div className="grid grid-cols-3 gap-4">
+              {transformedPicks.map((user) => (
+                <div key={user.userId} className="text-center">
+                  <div className="relative bg-white rounded-xl p-3 shadow-md border border-gray-100">
+                    <div className="flex flex-col items-center gap-2">
+                      {user.tdScorer.playerHeadshot ? (
+                        <img
+                          src={user.tdScorer.playerHeadshot}
+                          alt={user.tdScorer.player}
+                          className="w-16 h-16 rounded-full object-cover border-3 border-gray-200 shadow-md"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = getUserAvatar(user.userName);
+                          }}
+                        />
+                      ) : (
+                        <div className="w-16 h-16 bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center text-2xl shadow-md">
+                          🏈
+                        </div>
+                      )}
+                      <div className="text-center">
+                        <p className="text-sm font-bold text-gray-800">
+                          {user.tdScorer.player}
+                        </p>
+                        <p className="text-xs text-gray-500">{user.userName}</p>
+                      </div>
+                    </div>
+                    <div className="absolute -top-2 -right-2">
+                      {user.tdScorer.isCorrect ? (
+                        <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
+                          <Check className="h-4 w-4 text-white" />
+                        </div>
+                      ) : (
+                        <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg">
+                          <X className="h-4 w-4 text-white" />
                         </div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-        {/* All Picks Tab */}
-        <TabsContent value="picks" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Complete Picks Matrix</CardTitle>
-              <CardDescription>
-                All player picks in a comprehensive view
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs sm:text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left p-1 sm:p-2">Player</th>
-                      {currentWeekGames.map((game) => (
-                        <th key={game.id} className="text-center p-1 sm:p-2">
-                          <div className="text-xs">
-                            {game.awayTeam?.abbreviation} @ {game.homeTeam?.abbreviation}
+        {/* Enhanced Prop Bet Section */}
+        {!loading && transformedPicks.length > 0 && (
+          <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-4 shadow-sm border border-purple-100">
+            <h2 className="text-lg font-bold text-gray-800 mb-4">PROP BETS</h2>
+            <div className="space-y-3">
+              {transformedPicks.map((user) => (
+                <div key={user.userId} className="relative">
+                  <div className="bg-white p-4 rounded-xl shadow-md border border-gray-100">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={user.userAvatar}
+                        alt={user.userName}
+                        className="w-8 h-8 rounded-full object-cover border-2 border-gray-200"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = getUserAvatar(user.userName);
+                        }}
+                      />
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-gray-800">
+                          {user.propBet.description || "—"}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {user.userName}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="absolute -top-2 -right-2">
+                    {user.propBet.isCorrect ? (
+                      <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
+                        <Check className="h-4 w-4 text-white" />
+                      </div>
+                    ) : (
+                      <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg">
+                        <X className="h-4 w-4 text-white" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Enhanced Total Points Section */}
+        {!loading && transformedPicks.length > 0 && (
+          <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-4 shadow-sm border border-blue-100">
+            <h2 className="text-lg font-bold text-gray-800 mb-4">
+              TOTAL POINTS
+            </h2>
+            <div className="grid grid-cols-3 gap-4">
+              {transformedPicks.map((user, index) => {
+                const isLeader = index === 0; // First user is leader
+                return (
+                  <div key={user.userId} className="text-center">
+                    <div
+                      className={`${
+                        isLeader
+                          ? "bg-gradient-to-br from-yellow-400 to-orange-500 text-white shadow-lg scale-105"
+                          : "bg-blue-900 text-white shadow-md"
+                      } p-4 rounded-xl text-2xl font-bold mb-3`}
+                    >
+                      {user.totalPoints}
+                    </div>
+                    <div className="flex flex-col items-center gap-2">
+                      <img
+                        src={user.userAvatar}
+                        alt={user.userName}
+                        className={`w-10 h-10 rounded-full object-cover border-3 ${
+                          isLeader
+                            ? "border-yellow-400 shadow-lg"
+                            : "border-gray-300"
+                        }`}
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = getUserAvatar(user.userName);
+                        }}
+                      />
+                      <div className="text-center">
+                        <p className="text-sm font-bold text-gray-800">
+                          {user.userName}
+                        </p>
+                        {isLeader && (
+                          <p className="text-xs text-yellow-600 font-semibold">
+                            LEADER
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Desktop/Tablet View - Hidden on mobile */}
+      <div className="hidden lg:block">
+        <div className="max-w-6xl mx-auto p-6">
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="space-y-6"
+          >
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="spreads">Spread Picks</TabsTrigger>
+              <TabsTrigger value="locks">Locks</TabsTrigger>
+              <TabsTrigger value="td-scorers">TD Scorers</TabsTrigger>
+              <TabsTrigger value="prop-bets">Prop Bets</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="spreads" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Week {selectedWeek} Spread Picks</CardTitle>
+                  <CardDescription>
+                    All player spread picks with outcomes
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                      <p className="text-gray-600 mt-2">Loading picks...</p>
+                    </div>
+                  ) : transformedPicks.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-600">No picks data available</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {transformedPicks.map((user) => (
+                        <div
+                          key={user.userId}
+                          className="p-4 border rounded-lg"
+                        >
+                          <div className="flex items-center gap-3 mb-3">
+                            <img
+                              src={user.userAvatar}
+                              alt={user.userName}
+                              className="w-10 h-10 rounded-full object-cover border-2 border-primary"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.src = getUserAvatar(user.userName);
+                              }}
+                            />
+                            <div>
+                              <h3 className="font-semibold">{user.userName}</h3>
+                              <p className="text-sm text-muted-foreground">
+                                {user.picks.filter((p) => p.isCorrect).length}/
+                                {user.picks.length} correct
+                              </p>
+                            </div>
                           </div>
-                          <div className="text-xs text-muted-foreground">
-                            {game.awayTeam?.abbreviation} +{Math.abs(game.spread)}
+                          <div className="grid grid-cols-9 gap-2">
+                            {user.picks.map((pick, index) => {
+                              const teamLogo = getTeamLogo(pick.team);
+                              return (
+                                <div
+                                  key={index}
+                                  className="bg-blue-900 text-white p-2 rounded-lg text-center text-xs font-bold relative shadow-md border border-blue-800"
+                                >
+                                  <div className="flex flex-col items-center gap-1">
+                                    <img
+                                      src={teamLogo}
+                                      alt={pick.team}
+                                      className="w-4 h-4 rounded-full object-cover"
+                                      onError={(e) => {
+                                        const target =
+                                          e.target as HTMLImageElement;
+                                        target.style.display = "none";
+                                      }}
+                                    />
+                                    <span className="text-xs font-bold">
+                                      {pick.team}
+                                    </span>
+                                  </div>
+                                  {pick.isCorrect && (
+                                    <div className="absolute -top-1 -right-1">
+                                      <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                                        <Check className="h-3 w-3 text-white" />
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-                        </th>
+                        </div>
                       ))}
-                      <th className="text-center p-1 sm:p-2">Lock</th>
-                      <th className="text-center p-1 sm:p-2">TD Scorer</th>
-                      <th className="text-center p-1 sm:p-2">Prop Bet</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((user) => {
-                      const userPick = mockUserPicks.find(pick => pick.userId === user.id);
-                      
-                      return (
-                        <tr key={user.id} className="border-b">
-                          <td className="p-1 sm:p-2 font-medium">{user.name}</td>
-                          {currentWeekGames.map((game) => {
-                            const pick = userPick?.picks.find(p => p.gameId === game.id);
-                            const isLock = userPick?.lockOfWeek?.gameId === game.id;
-                            
-                            return (
-                              <td key={game.id} className="text-center p-1 sm:p-2">
-                                {pick ? (
-                                  <Badge variant={isLock ? "default" : "secondary"} className="text-xs">
-                                    {pick.selectedTeam}
-                                    {isLock && <Lock className="h-3 w-3 ml-1" />}
-                                  </Badge>
-                                ) : (
-                                  <span className="text-muted-foreground">-</span>
-                                )}
-                              </td>
-                            );
-                          })}
-                          <td className="text-center p-1 sm:p-2">
-                            {userPick?.lockOfWeek ? (
-                              <Badge variant="default" className="text-xs">
-                                {userPick.lockOfWeek.selectedTeam}
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </td>
-                          <td className="text-center p-1 sm:p-2">
-                            {userPick?.touchdownScorer ? (
-                              <div className="text-xs">
-                                {userPick.touchdownScorer.playerName}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="locks" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Lock of the Week</CardTitle>
+                  <CardDescription>
+                    Each player's most confident pick
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                      <p className="text-gray-600 mt-2">Loading picks...</p>
+                    </div>
+                  ) : transformedPicks.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-600">No picks data available</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {transformedPicks.map((user) => {
+                        return (
+                          <div
+                            key={user.userId}
+                            className="p-4 border rounded-lg text-center"
+                          >
+                            <div className="flex items-center justify-center gap-2 mb-2">
+                              <img
+                                src={user.userAvatar}
+                                alt={user.userName}
+                                className="w-8 h-8 rounded-full object-cover border-2 border-primary"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.src = getUserAvatar(user.userName);
+                                }}
+                              />
+                              <span className="font-semibold">
+                                {user.userName}
+                              </span>
+                            </div>
+                            <div className="bg-blue-900 text-white p-4 rounded-xl text-center font-bold text-lg relative shadow-lg border-2 border-blue-800">
+                              <div className="flex flex-col items-center gap-2">
+                                <img
+                                  src={getTeamLogo(user.lock.team)}
+                                  alt={user.lock.team}
+                                  className="w-8 h-8 rounded-full object-cover"
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = "none";
+                                  }}
+                                />
+                                <span className="text-lg font-bold">
+                                  {user.lock.team}
+                                </span>
                               </div>
+                              {user.lock.isCorrect && (
+                                <div className="absolute -top-2 -right-2">
+                                  <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
+                                    <Check className="h-4 w-4 text-white" />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="td-scorers" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Touchdown Scorers</CardTitle>
+                  <CardDescription>
+                    Player touchdown scorer predictions
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                      <p className="text-gray-600 mt-2">Loading picks...</p>
+                    </div>
+                  ) : transformedPicks.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-600">No picks data available</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {transformedPicks.map((user) => (
+                        <div key={user.userId} className="text-center">
+                          <div className="flex items-center justify-center gap-2 mb-3">
+                            <img
+                              src={user.userAvatar}
+                              alt={user.userName}
+                              className="w-8 h-8 rounded-full object-cover border-2 border-primary"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.src = getUserAvatar(user.userName);
+                              }}
+                            />
+                            <span className="font-semibold">
+                              {user.userName}
+                            </span>
+                          </div>
+                          <div className="relative">
+                            {user.tdScorer.playerHeadshot ? (
+                              <img
+                                src={user.tdScorer.playerHeadshot}
+                                alt={user.tdScorer.player}
+                                className="w-20 h-20 rounded-full mx-auto mb-2 object-cover border-2 border-gray-300"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.src = getUserAvatar(user.userName);
+                                }}
+                              />
                             ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </td>
-                          <td className="text-center p-1 sm:p-2">
-                            {userPick?.propBet ? (
-                              <div className="text-xs max-w-20 sm:max-w-32 truncate" title={userPick.propBet.description}>
-                                {userPick.propBet.description}
+                              <div className="w-20 h-20 bg-gray-200 rounded-full mx-auto mb-2 flex items-center justify-center text-3xl">
+                                🏈
                               </div>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
                             )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                            {getOutcomeIcon(user.tdScorer.isCorrect)}
+                            <p className="text-lg font-semibold mt-2">
+                              {user.tdScorer.player}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="prop-bets" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Prop Bets</CardTitle>
+                  <CardDescription>
+                    Custom proposition bets from players
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                      <p className="text-gray-600 mt-2">Loading picks...</p>
+                    </div>
+                  ) : transformedPicks.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-600">No picks data available</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {transformedPicks.map((user) => (
+                        <div
+                          key={user.userId}
+                          className="p-4 border rounded-lg relative"
+                        >
+                          <div className="flex items-center gap-3 mb-2">
+                            <img
+                              src={user.userAvatar}
+                              alt={user.userName}
+                              className="w-8 h-8 rounded-full object-cover border-2 border-primary"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.src = getUserAvatar(user.userName);
+                              }}
+                            />
+                            <span className="font-semibold">
+                              {user.userName}
+                            </span>
+                          </div>
+                          <div className="bg-gray-50 p-3 rounded-lg">
+                            <p className="font-medium">
+                              {user.propBet.description}
+                            </p>
+                          </div>
+                          {getOutcomeIcon(user.propBet.isCorrect)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
     </div>
   );
 };

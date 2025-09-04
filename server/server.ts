@@ -16,6 +16,7 @@ import {
   syncAllPlayers,
   syncBettingOddsForAllGames,
 } from "./src/modules/sync/sync.service.js";
+import { resolveWeek } from "./src/modules/scoring/scoring.service.js";
 
 const server = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -37,19 +38,24 @@ server.use(morgan("dev"));
 server.use(
   helmet({
     contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
   })
 );
 server.use(
   cors({
-    origin: "*",
+    // Reflect request origin (required when using credentials)
+    origin: true,
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
     maxAge: 86400,
+    optionsSuccessStatus: 204,
   })
 );
 server.use(express.json({ limit: "10mb" }));
 server.use(express.urlencoded({ extended: true }));
+// Serve uploads (avatars) statically so the client can access them
+server.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -58,7 +64,7 @@ const limiter = rateLimit({
   max: 100,
   message: "Too many requests, please try again later.",
 });
-server.use(limiter);
+// server.use(limiter);
 
 // Use the app routes
 server.use("/api/v1", app);
@@ -107,6 +113,18 @@ server.use(errorHandler);
       console.log(
         "[Scheduler] Weekly betting odds sync scheduled: 01:00 every Monday"
       );
+
+      // Schedule: Every 2 minutes, resolve current week outcomes
+      cron.schedule("*/2 * * * *", async () => {
+        try {
+          const { week } = await syncWeekGames();
+          await resolveWeek(week);
+          console.log(`[Scheduler] Resolved outcomes for week ${week}`);
+        } catch (err) {
+          console.error("[Scheduler] Failed resolving outcomes:", err);
+        }
+      });
+      console.log("[Scheduler] Outcome resolver scheduled: every 2 minutes");
     });
   } catch (error) {
     console.error("Error starting the server", error);

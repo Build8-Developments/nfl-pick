@@ -12,17 +12,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { users } from "../data/mockData";
+import { users as mockUsers } from "../data/mockData";
 
 const Login = () => {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { login, currentUser } = useAuth();
+  const { login, currentUser, devLoginMock } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect if already logged in
   if (currentUser) {
     return <Navigate to="/" replace />;
   }
@@ -32,7 +31,7 @@ const Login = () => {
     setError("");
     setIsLoading(true);
 
-    const result = login(email, password);
+    const result = await login(identifier, password);
 
     if (result.success) {
       navigate("/");
@@ -43,13 +42,17 @@ const Login = () => {
     setIsLoading(false);
   };
 
-  const handleQuickLogin = (userEmail: string) => {
-    setEmail(userEmail);
-    setPassword("password"); // Mock password
-    const result = login(userEmail, "password");
-    if (result.success) {
-      navigate("/");
-    }
+  const handleQuickLogin = (email: string, name: string, isAdmin: boolean) => {
+    devLoginMock({
+      id: Math.floor(Math.random() * 1000000),
+      name,
+      email,
+      isAdmin,
+      avatar: undefined,
+      seasonRecord: { wins: 0, losses: 0, percentage: 0 },
+      weeklyWins: 0,
+    });
+    navigate("/");
   };
 
   return (
@@ -62,13 +65,12 @@ const Login = () => {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="identifier">Username or Email</Label>
               <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email"
+                id="identifier"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="Enter your username or email"
                 required
               />
             </div>
@@ -101,15 +103,15 @@ const Login = () => {
               Quick login (Demo):
             </p>
             <div className="space-y-2">
-              {users.map((user) => (
+              {mockUsers.map((u) => (
                 <Button
-                  key={user.id}
+                  key={u.id}
                   variant="outline"
                   size="sm"
                   className="w-full"
-                  onClick={() => handleQuickLogin(user.email)}
+                  onClick={() => handleQuickLogin(u.email, u.name, u.isAdmin)}
                 >
-                  Login as {user.name} {user.isAdmin ? "(Admin)" : ""}
+                  Login as {u.name} {u.isAdmin ? "(Admin)" : ""}
                 </Button>
               ))}
             </div>
