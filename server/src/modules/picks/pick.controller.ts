@@ -121,15 +121,16 @@ export const upsertMyPick = async (req: Request, res: Response) => {
     });
     // Check if picks are locked based on game timing rules
     const isPicksLocked = async () => {
+      // Only check timing rules if there's an existing finalized pick
       if (!existing || !existing.isFinalized) return false;
-      
+
       // Get all games for this week
       const weekGames = await Game.find({
         gameWeek: new RegExp(`\\b${weekNum}\\b`, "i"),
       }).lean();
-      
+
       if (weekGames.length === 0) return false;
-      
+
       const now = new Date();
       const parseGameDateTime = (
         gameDate: string | undefined,
@@ -151,64 +152,94 @@ export const upsertMyPick = async (req: Request, res: Response) => {
         }
         return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
       };
-      
-      // Check for Thursday night game (10 minutes before kickoff)
+
+      // Check if any games have started (this locks ALL picks for the week)
+      // Thursday night game - 10 minutes before kickoff
       const thursdayGame = weekGames.find((g) => {
-        const gameDateTime = parseGameDateTime((g as any).gameDate, (g as any).gameTime);
+        const gameDateTime = parseGameDateTime(
+          (g as any).gameDate,
+          (g as any).gameTime
+        );
         return gameDateTime.getDay() === 4; // Thursday
       });
-      
+
       if (thursdayGame) {
-        const thursdayDateTime = parseGameDateTime((thursdayGame as any).gameDate, (thursdayGame as any).gameTime);
-        const lockoutTime = new Date(thursdayDateTime.getTime() - (10 * 60 * 1000)); // 10 minutes before
+        const thursdayDateTime = parseGameDateTime(
+          (thursdayGame as any).gameDate,
+          (thursdayGame as any).gameTime
+        );
+        const lockoutTime = new Date(
+          thursdayDateTime.getTime() - 10 * 60 * 1000
+        ); // 10 minutes before
         if (now > lockoutTime) return true;
       }
 
-      // Check for Sunday games (before first kickoff)
+      // Sunday games - before first kickoff
       const sundayGames = weekGames.filter((g) => {
-        const gameDateTime = parseGameDateTime((g as any).gameDate, (g as any).gameTime);
+        const gameDateTime = parseGameDateTime(
+          (g as any).gameDate,
+          (g as any).gameTime
+        );
         return gameDateTime.getDay() === 0; // Sunday
       });
 
       if (sundayGames.length > 0) {
         const firstSundayGame = sundayGames.sort((a, b) => {
-          const dateA = parseGameDateTime((a as any).gameDate, (a as any).gameTime);
-          const dateB = parseGameDateTime((b as any).gameDate, (b as any).gameTime);
+          const dateA = parseGameDateTime(
+            (a as any).gameDate,
+            (a as any).gameTime
+          );
+          const dateB = parseGameDateTime(
+            (b as any).gameDate,
+            (b as any).gameTime
+          );
           return dateA.getTime() - dateB.getTime();
         })[0];
 
-        const firstSundayGameDateTime = parseGameDateTime((firstSundayGame as any).gameDate, (firstSundayGame as any).gameTime);
+        const firstSundayGameDateTime = parseGameDateTime(
+          (firstSundayGame as any).gameDate,
+          (firstSundayGame as any).gameTime
+        );
         if (now > firstSundayGameDateTime) return true;
       }
 
-      // Check for Monday games (10 minutes before kickoff, same as Thursday)
+      // Monday games - 10 minutes before kickoff
       const mondayGames = weekGames.filter((g) => {
-        const gameDateTime = parseGameDateTime((g as any).gameDate, (g as any).gameTime);
+        const gameDateTime = parseGameDateTime(
+          (g as any).gameDate,
+          (g as any).gameTime
+        );
         return gameDateTime.getDay() === 1; // Monday
       });
 
       if (mondayGames.length > 0) {
         const mondayGame = mondayGames[0]; // Assuming only one Monday game
-        const mondayDateTime = parseGameDateTime((mondayGame as any).gameDate, (mondayGame as any).gameTime);
-        const lockoutTime = new Date(mondayDateTime.getTime() - (10 * 60 * 1000)); // 10 minutes before
+        const mondayDateTime = parseGameDateTime(
+          (mondayGame as any).gameDate,
+          (mondayGame as any).gameTime
+        );
+        const lockoutTime = new Date(mondayDateTime.getTime() - 10 * 60 * 1000); // 10 minutes before
         if (now > lockoutTime) return true;
       }
 
       return false;
     };
 
-    const picksLocked = await isPicksLocked();
-    if (picksLocked) {
-      console.warn("[PICKS] upsert denied: picks locked by timing rules", {
-        userId: targetUserId,
-        week: weekNum,
-      });
-      return res
-        .status(400)
-        .json(
-          ApiResponse.error("Picks are locked for this week based on game timing rules")
-        );
-    }
+    // Commented out global lockout check - individual game validation will handle this
+    // const picksLocked = await isPicksLocked();
+    // if (picksLocked) {
+    //   console.warn("[PICKS] upsert denied: picks locked by timing rules", {
+    //     userId: targetUserId,
+    //     week: weekNum,
+    //   });
+    //   return res
+    //     .status(400)
+    //     .json(
+    //       ApiResponse.error(
+    //         "Picks are locked for this week based on game timing rules"
+    //       )
+    //     );
+    // }
 
     // Lock validation: if finalizing, ensure no selected game has passed kickoff
     if (isFinalized && selections && Object.keys(selections).length > 0) {
@@ -348,13 +379,24 @@ export const upsertMyPick = async (req: Request, res: Response) => {
       }
       const missingFields: string[] = [];
       // Only validate if provided - these are optional fields
-      if (lockOfWeek !== undefined && lockOfWeek !== null && lockOfWeek !== "") {
+      if (
+        lockOfWeek !== undefined &&
+        lockOfWeek !== null &&
+        lockOfWeek !== ""
+      ) {
         if (typeof lockOfWeek !== "string" || lockOfWeek.trim().length === 0) {
           missingFields.push("lockOfWeek");
         }
       }
-      if (touchdownScorer !== undefined && touchdownScorer !== null && touchdownScorer !== "") {
-        if (typeof touchdownScorer !== "string" || touchdownScorer.trim().length === 0) {
+      if (
+        touchdownScorer !== undefined &&
+        touchdownScorer !== null &&
+        touchdownScorer !== ""
+      ) {
+        if (
+          typeof touchdownScorer !== "string" ||
+          touchdownScorer.trim().length === 0
+        ) {
           missingFields.push("touchdownScorer");
         }
       }
@@ -364,8 +406,15 @@ export const upsertMyPick = async (req: Request, res: Response) => {
           missingFields.push("propBet");
         }
       }
-      if (propBetOdds !== undefined && propBetOdds !== null && propBetOdds !== "") {
-        if (typeof propBetOdds !== "string" || propBetOdds.trim().length === 0) {
+      if (
+        propBetOdds !== undefined &&
+        propBetOdds !== null &&
+        propBetOdds !== ""
+      ) {
+        if (
+          typeof propBetOdds !== "string" ||
+          propBetOdds.trim().length === 0
+        ) {
           missingFields.push("propBetOdds");
         }
       }
@@ -405,7 +454,7 @@ export const upsertMyPick = async (req: Request, res: Response) => {
       isFinalized,
       selectionsCount: Object.keys(normalizedSelections).length,
       lockOfWeek,
-      touchdownScorer
+      touchdownScorer,
     });
 
     // Build the update object, only including fields that have values
@@ -443,7 +492,7 @@ export const upsertMyPick = async (req: Request, res: Response) => {
       _id: saved?._id,
       propBet: saved?.propBet,
       propBetOdds: saved?.propBetOdds,
-      isFinalized: saved?.isFinalized
+      isFinalized: saved?.isFinalized,
     });
 
     // If still null, try alternative approach
@@ -651,14 +700,14 @@ export const getWeeksWithFinalizedPicks = async (
 export const getAllPropBets = async (req: Request, res: Response) => {
   try {
     console.log("[PICKS] Fetching all prop bets for admin...");
-    
+
     // First, let's see what we have in the database
     const allPicks = await Pick.find({}).lean();
     console.log("[PICKS] Total picks in database:", allPicks.length);
-    
-    const finalizedPicks = allPicks.filter(pick => pick.isFinalized);
+
+    const finalizedPicks = allPicks.filter((pick) => pick.isFinalized);
     console.log("[PICKS] Finalized picks:", finalizedPicks.length);
-    
+
     if (finalizedPicks.length > 0) {
       const sample = finalizedPicks[0];
       if (sample) {
@@ -667,29 +716,30 @@ export const getAllPropBets = async (req: Request, res: Response) => {
           propBet: sample.propBet,
           propBetOdds: sample.propBetOdds,
           isFinalized: sample.isFinalized,
-          user: sample.user
+          user: sample.user,
         });
       }
     }
-    
-    const picksWithPropBets = finalizedPicks.filter(pick => {
-      const hasPropBet = pick.propBet && 
-        pick.propBet !== null && 
-        pick.propBet !== "" && 
+
+    const picksWithPropBets = finalizedPicks.filter((pick) => {
+      const hasPropBet =
+        pick.propBet &&
+        pick.propBet !== null &&
+        pick.propBet !== "" &&
         pick.propBet.trim().length > 0;
-      
+
       if (hasPropBet) {
         console.log("[PICKS] Found pick with prop bet:", {
           _id: pick._id,
           propBet: pick.propBet,
-          propBetOdds: pick.propBetOdds
+          propBetOdds: pick.propBetOdds,
         });
       }
-      
+
       return hasPropBet;
     });
     console.log("[PICKS] Picks with prop bets:", picksWithPropBets.length);
-    
+
     if (picksWithPropBets.length > 0) {
       const sample = picksWithPropBets[0];
       if (sample) {
@@ -697,41 +747,56 @@ export const getAllPropBets = async (req: Request, res: Response) => {
           _id: sample?._id,
           propBet: sample?.propBet,
           propBetOdds: sample?.propBetOdds,
-          user: sample?.user
+          user: sample?.user,
         });
       }
     }
 
     // Use the picks we already found and filtered, but populate user data
-    const picks = await Promise.all(picksWithPropBets.map(async (pick: any) => {
-      const populatedPick = await Pick.findById(pick._id).populate('user', 'username email avatar').lean();
-      return populatedPick;
-    }));
-    
+    const picks = await Promise.all(
+      picksWithPropBets.map(async (pick: any) => {
+        const populatedPick = await Pick.findById(pick._id)
+          .populate("user", "username email avatar")
+          .lean();
+        return populatedPick;
+      })
+    );
+
     console.log("[PICKS] Using filtered picks with prop bets:", picks.length);
 
     console.log("[PICKS] Found picks with prop bets:", picks.length);
-    console.log("[PICKS] Sample pick:", picks[0] ? {
-      _id: picks[0]._id,
-      propBet: picks[0].propBet,
-      propBetOdds: picks[0].propBetOdds,
-      isFinalized: picks[0].isFinalized,
-      user: picks[0].user
-    } : "No picks found");
+    console.log(
+      "[PICKS] Sample pick:",
+      picks[0]
+        ? {
+            _id: picks[0]._id,
+            propBet: picks[0].propBet,
+            propBetOdds: picks[0].propBetOdds,
+            isFinalized: picks[0].isFinalized,
+            user: picks[0].user,
+          }
+        : "No picks found"
+    );
 
-    const propBets = picks.filter(pick => pick !== null).map((pick: any) => ({
-      _id: pick._id,
-      user: {
-        _id: pick.user._id,
-        username: pick.user.username,
-        avatar: pick.user.avatar
-      },
-      week: pick.week,
-      propBet: pick.propBet,
-      propBetOdds: pick.propBetOdds,
-      status: pick.propBetResolved ? (pick.propBetCorrect ? 'approved' : 'rejected') : 'pending',
-      submittedAt: pick.createdAt
-    }));
+    const propBets = picks
+      .filter((pick) => pick !== null)
+      .map((pick: any) => ({
+        _id: pick._id,
+        user: {
+          _id: pick.user._id,
+          username: pick.user.username,
+          avatar: pick.user.avatar,
+        },
+        week: pick.week,
+        propBet: pick.propBet,
+        propBetOdds: pick.propBetOdds,
+        status: pick.propBetResolved
+          ? pick.propBetCorrect
+            ? "approved"
+            : "rejected"
+          : "pending",
+        submittedAt: pick.createdAt,
+      }));
 
     console.log("[PICKS] Returning prop bets:", propBets.length);
     return res.status(200).json(ApiResponse.success(propBets));
@@ -748,23 +813,25 @@ export const updatePropBetStatus = async (req: Request, res: Response) => {
     const { status } = req.body;
 
     if (!propBetId || !status) {
-      return res.status(400).json(ApiResponse.error("Missing propBetId or status"));
+      return res
+        .status(400)
+        .json(ApiResponse.error("Missing propBetId or status"));
     }
 
-    if (!['approved', 'rejected'].includes(status)) {
-      return res.status(400).json(ApiResponse.error("Status must be 'approved' or 'rejected'"));
+    if (!["approved", "rejected"].includes(status)) {
+      return res
+        .status(400)
+        .json(ApiResponse.error("Status must be 'approved' or 'rejected'"));
     }
 
     const updateData = {
       propBetResolved: true,
-      propBetCorrect: status === 'approved'
+      propBetCorrect: status === "approved",
     };
 
-    const updatedPick = await Pick.findByIdAndUpdate(
-      propBetId,
-      updateData,
-      { new: true }
-    );
+    const updatedPick = await Pick.findByIdAndUpdate(propBetId, updateData, {
+      new: true,
+    });
 
     if (!updatedPick) {
       return res.status(404).json(ApiResponse.error("Prop bet not found"));
@@ -773,7 +840,9 @@ export const updatePropBetStatus = async (req: Request, res: Response) => {
     return res.status(200).json(ApiResponse.success(updatedPick));
   } catch (error) {
     console.error("[PICKS] Error updating prop bet status:", error);
-    return res.status(500).json(ApiResponse.error("Failed to update prop bet status"));
+    return res
+      .status(500)
+      .json(ApiResponse.error("Failed to update prop bet status"));
   }
 };
 
@@ -781,44 +850,47 @@ export const updatePropBetStatus = async (req: Request, res: Response) => {
 export const debugAllPicks = async (req: Request, res: Response) => {
   try {
     console.log("[DEBUG] Fetching all picks for debugging...");
-    
+
     const allPicks = await Pick.find({}).lean();
     console.log("[DEBUG] Total picks found:", allPicks.length);
-    
-    const picksWithPropBets = allPicks.filter(pick => 
-      pick.propBet && 
-      pick.propBet !== null && 
-      pick.propBet !== "" && 
-      pick.propBet.trim().length > 0
+
+    const picksWithPropBets = allPicks.filter(
+      (pick) =>
+        pick.propBet &&
+        pick.propBet !== null &&
+        pick.propBet !== "" &&
+        pick.propBet.trim().length > 0
     );
-    
+
     console.log("[DEBUG] Picks with prop bets:", picksWithPropBets.length);
-    
+
     const debugData = {
       totalPicks: allPicks.length,
       picksWithPropBetsCount: picksWithPropBets.length,
-      allPicks: allPicks.map(pick => ({
+      allPicks: allPicks.map((pick) => ({
         _id: pick._id,
         week: pick.week,
         propBet: pick.propBet,
         propBetOdds: pick.propBetOdds,
         isFinalized: pick.isFinalized,
-        user: pick.user
+        user: pick.user,
       })),
-      picksWithPropBets: picksWithPropBets.map(pick => ({
+      picksWithPropBets: picksWithPropBets.map((pick) => ({
         _id: pick._id,
         week: pick.week,
         propBet: pick.propBet,
         propBetOdds: pick.propBetOdds,
         isFinalized: pick.isFinalized,
-        user: pick.user
-      }))
+        user: pick.user,
+      })),
     };
-    
+
     return res.status(200).json(ApiResponse.success(debugData));
   } catch (error) {
     console.error("[DEBUG] Error fetching debug data:", error);
-    return res.status(500).json(ApiResponse.error("Failed to fetch debug data"));
+    return res
+      .status(500)
+      .json(ApiResponse.error("Failed to fetch debug data"));
   }
 };
 
@@ -826,22 +898,24 @@ export const debugAllPicks = async (req: Request, res: Response) => {
 export const createTestPropBet = async (req: Request, res: Response) => {
   try {
     console.log("[TEST] Creating test prop bet...");
-    
+
     const testPick = new Pick({
       user: new mongoose.Types.ObjectId(),
       week: 1,
-      selections: { "test_game": "TEST" },
+      selections: { test_game: "TEST" },
       propBet: "Test prop bet - Over 100 yards",
       propBetOdds: "+150",
-      isFinalized: true
+      isFinalized: true,
     });
-    
+
     const saved = await testPick.save();
     console.log("[TEST] Test prop bet created:", saved._id);
-    
+
     return res.status(200).json(ApiResponse.success(saved));
   } catch (error) {
     console.error("[TEST] Error creating test prop bet:", error);
-    return res.status(500).json(ApiResponse.error("Failed to create test prop bet"));
+    return res
+      .status(500)
+      .json(ApiResponse.error("Failed to create test prop bet"));
   }
 };

@@ -12,7 +12,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-// Removed mock data import - using real API authentication
 
 const Login = () => {
   const [identifier, setIdentifier] = useState("");
@@ -40,19 +39,6 @@ const Login = () => {
     }
 
     setIsLoading(false);
-  };
-
-  const handleQuickLogin = (email: string, name: string, isAdmin: boolean) => {
-    devLoginMock({
-      id: Math.floor(Math.random() * 1000000),
-      name,
-      email,
-      isAdmin,
-      avatar: undefined,
-      seasonRecord: { wins: 0, losses: 0, percentage: 0 },
-      weeklyWins: 0,
-    });
-    navigate("/");
   };
 
   return (
@@ -96,8 +82,6 @@ const Login = () => {
               {isLoading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
-
-          {/* Removed quick login demo buttons - using real API authentication */}
         </CardContent>
       </Card>
     </div>

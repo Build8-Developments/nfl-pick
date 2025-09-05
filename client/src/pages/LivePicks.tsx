@@ -17,7 +17,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { RefreshCw, AlertTriangle, Check, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  RefreshCw,
+  AlertTriangle,
+  Check,
+  X,
+  Target,
+  Lock,
+  TrendingUp,
+  Clock,
+} from "lucide-react";
 import { apiClient } from "@/lib/api";
 import type { ITeam } from "@/types/team.type";
 import type { IPlayer } from "@/types/player.type";
@@ -74,6 +84,19 @@ const LivePicks = () => {
       if (meridiem === "a" && hours === 12) hours = 0;
     }
     return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
+  };
+
+  const formatSpread = (spread: string | undefined, isFavorite: boolean) => {
+    if (!spread || spread === "PK" || spread.trim() === "") return "LOADING";
+
+    const numSpread = parseFloat(spread);
+    if (isNaN(numSpread)) return spread;
+
+    if (isFavorite) {
+      return `${spread}`;
+    } else {
+      return `${spread}`;
+    }
   };
 
   // Load teams/players and infer current week from games cache if available
@@ -363,9 +386,9 @@ const LivePicks = () => {
     const connect = () => {
       try {
         es = new EventSource(streamUrl);
-        
+
         es.onopen = () => {
-          console.log('SSE connection opened');
+          console.log("SSE connection opened");
           reconnectAttempts = 0;
         };
 
@@ -395,22 +418,27 @@ const LivePicks = () => {
         };
 
         es.onerror = (error) => {
-          console.warn('SSE connection error:', error);
+          console.warn("SSE connection error:", error);
           es?.close();
           es = null;
-          
+
           // Attempt to reconnect with exponential backoff
           if (reconnectAttempts < maxReconnectAttempts) {
             reconnectAttempts++;
-            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-            console.log(`Attempting to reconnect SSE in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
+            const delay = Math.min(
+              1000 * Math.pow(2, reconnectAttempts),
+              30000
+            );
+            console.log(
+              `Attempting to reconnect SSE in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`
+            );
             reconnectTimeout = setTimeout(connect, delay);
           } else {
-            console.warn('Max SSE reconnection attempts reached, giving up');
+            console.warn("Max SSE reconnection attempts reached, giving up");
           }
         };
       } catch (error) {
-        console.error('Failed to create SSE connection:', error);
+        console.error("Failed to create SSE connection:", error);
       }
     };
 
@@ -432,7 +460,8 @@ const LivePicks = () => {
       if (!selectedWeek) return;
       // Only poll if we haven't received updates recently
       const now = Date.now();
-      if (now - lastFetchAtRef.current > 60000) { // 1 minute since last update
+      if (now - lastFetchAtRef.current > 60000) {
+        // 1 minute since last update
         apiClient
           .get<{ success?: boolean; data?: BackendPick[] }>(
             `picks/all/${selectedWeek}`
@@ -581,14 +610,16 @@ const LivePicks = () => {
   // Fetch betting odds for games
   useEffect(() => {
     if (!selectedWeek || !games.length) return;
-    
+
     const currentWeekGames = games.filter((g) => {
       const weekNum = Number(g.gameWeek.match(/\d+/)?.[0] ?? NaN);
       return !Number.isNaN(weekNum) && weekNum === selectedWeek;
     });
 
     // Only fetch odds for games we don't already have
-    const gamesToFetch = currentWeekGames.filter(game => !oddsByGameId[game.gameID]);
+    const gamesToFetch = currentWeekGames.filter(
+      (game) => !oddsByGameId[game.gameID]
+    );
 
     if (gamesToFetch.length === 0) return;
 
@@ -597,39 +628,64 @@ const LivePicks = () => {
         const game = gamesToFetch[i];
         let retryCount = 0;
         const maxRetries = 2;
-        
+
         while (retryCount <= maxRetries) {
           try {
+            console.log(
+              `[LIVE PICKS] Fetching odds for game ${game.gameID}...`
+            );
             const res = await apiClient.get<{
               success: boolean;
-              data?: { odds?: { awayTeamSpread?: string; homeTeamSpread?: string } };
+              data?: {
+                odds?: { awayTeamSpread?: string; homeTeamSpread?: string };
+              };
             }>(`betting-odds/${encodeURIComponent(game.gameID)}`);
-            
+
+            console.log(
+              `[LIVE PICKS] Raw response for game ${game.gameID}:`,
+              res
+            );
+
             // Check if response exists and has data with odds
             if (res && res.data && res.data.odds) {
-              setOddsByGameId(prev => ({
+              console.log(
+                `[LIVE PICKS] Fetched odds for game ${game.gameID}:`,
+                res.data.odds
+              );
+              setOddsByGameId((prev) => ({
                 ...prev,
-                [game.gameID]: res.data!.odds!
+                [game.gameID]: res.data!.odds!,
               }));
               break; // Success, exit retry loop
             } else {
+              console.log(
+                `[LIVE PICKS] No odds data for game ${game.gameID}:`,
+                res
+              );
               // No odds data available, don't retry
               break;
             }
           } catch (err) {
             retryCount++;
             if (retryCount <= maxRetries) {
-              console.warn(`Retrying odds fetch for game ${game.gameID} (attempt ${retryCount}/${maxRetries})`);
-              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+              console.warn(
+                `Retrying odds fetch for game ${game.gameID} (attempt ${retryCount}/${maxRetries})`
+              );
+              await new Promise((resolve) =>
+                setTimeout(resolve, 1000 * retryCount)
+              );
             } else {
-              console.error(`Failed to fetch odds for game ${game.gameID} after ${maxRetries} retries:`, err);
+              console.error(
+                `Failed to fetch odds for game ${game.gameID} after ${maxRetries} retries:`,
+                err
+              );
             }
           }
         }
-        
+
         // Add a small delay between requests to avoid overwhelming the API
         if (i < gamesToFetch.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 300));
+          await new Promise((resolve) => setTimeout(resolve, 300));
         }
       }
     };
@@ -680,7 +736,13 @@ const LivePicks = () => {
         totalPoints: 0,
       };
     });
-  }, [allPicks, getPlayerById, getUserAvatar, playerData, hasCurrentUserSubmitted]);
+  }, [
+    allPicks,
+    getPlayerById,
+    getUserAvatar,
+    playerData,
+    hasCurrentUserSubmitted,
+  ]);
 
   // Fetch player data for TD scorers when picks are loaded
   useEffect(() => {
@@ -715,20 +777,18 @@ const LivePicks = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="space-y-6">
       {/* Header with week selector and manual refresh */}
-      <div className="bg-white text-gray-900 px-4 py-4 border-b border-gray-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div>
-              <h1 className="text-xl font-bold text-black">Live Picks</h1>
-              <p className="text-sm text-gray-600">Compare all users by week</p>
-            </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Live Picks</h1>
+          <div className="flex items-center gap-4 mt-1">
+            <p className="text-muted-foreground">Compare all users by week</p>
             {availableWeeks.length > 0 && (
               <div className="flex items-center gap-2">
                 <Label
                   htmlFor="week-selector"
-                  className="text-sm text-gray-700"
+                  className="text-sm text-muted-foreground"
                 >
                   Select Week:
                 </Label>
@@ -736,88 +796,94 @@ const LivePicks = () => {
                   value={selectedWeek?.toString() || ""}
                   onValueChange={(value) => setSelectedWeek(Number(value))}
                 >
-                  <SelectTrigger id="week-selector" className="w-28">
+                  <SelectTrigger className="w-24">
                     <SelectValue placeholder="Week" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableWeeks.map((w) => (
-                      <SelectItem key={w} value={w.toString()}>
-                        Week {w}
+                    {availableWeeks.map((week) => (
+                      <SelectItem key={week} value={week.toString()}>
+                        Week {week}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 {justUpdated && (
-                  <span className="ml-2 text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 border border-green-300">
+                  <Badge variant="default" className="text-sm">
                     Updated
-                  </span>
+                  </Badge>
                 )}
               </div>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="ml-4 text-gray-700 hover:bg-gray-100 border border-gray-300"
-          >
-            <RefreshCw
-              className={`h-5 w-5 ${isRefreshing ? "animate-spin" : ""}`}
-            />
-          </Button>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+        >
+          <RefreshCw
+            className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`}
+          />
+          Refresh
+        </Button>
       </div>
 
       {/* Error Display */}
       {error && (
-        <div className="mx-4 mt-4">
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        </div>
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
       {/* Main Content */}
-      <div className="px-4 py-6 space-y-6">
-        {/* Loading State */}
-        {loading && (
-          <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-            <p className="text-gray-600 mt-2">Loading picks data...</p>
-          </div>
-        )}
+      {/* Loading State */}
+      {loading && (
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="text-muted-foreground mt-2">Loading picks data...</p>
+        </div>
+      )}
 
-        {/* No Data State */}
-        {!loading && transformedPicks.length === 0 && (
-          <div className="text-center py-8">
-            {!hasCurrentUserSubmitted ? (
-              <div className="space-y-4">
-                <p className="text-gray-600 text-lg font-medium">
-                  Submit your picks to see other players' picks
-                </p>
-                <p className="text-gray-500">
-                  Once you submit your picks for this week, you'll be able to see how other players are doing.
-                </p>
-                <Button 
-                  onClick={() => window.location.href = '/picks'}
-                  className="mt-4"
-                >
-                  Go to Make Picks
-                </Button>
-              </div>
-            ) : (
-              <p className="text-gray-600">No picks data available</p>
-            )}
-          </div>
-        )}
+      {/* No Data State */}
+      {!loading && transformedPicks.length === 0 && (
+        <div className="text-center py-8">
+          {!hasCurrentUserSubmitted ? (
+            <div className="space-y-4">
+              <p className="text-muted-foreground text-lg font-medium">
+                Submit your picks to see other players' picks
+              </p>
+              <p className="text-muted-foreground">
+                Once you submit your picks for this week, you'll be able to see
+                how other players are doing.
+              </p>
+              <Button
+                onClick={() => (window.location.href = "/picks")}
+                className="mt-4"
+              >
+                Go to Make Picks
+              </Button>
+            </div>
+          ) : (
+            <p className="text-muted-foreground">No picks data available</p>
+          )}
+        </div>
+      )}
 
-        {/* Spreads: 3 user avatars as column headers, rows per game with larger logos */}
-        {!loading && transformedPicks.length > 0 && (
-          <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl p-4 shadow-sm border border-gray-100">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">SPREADS</h2>
-
+      {/* Spread Picks */}
+      {!loading && transformedPicks.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5" />
+              Spread Picks
+            </CardTitle>
+            <CardDescription>
+              Compare all users' spread picks for this week
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
             {/* Header avatars aligned with columns */}
             <div className="grid grid-cols-3 gap-3 mb-4">
               {transformedPicks.map((user) => (
@@ -828,7 +894,7 @@ const LivePicks = () => {
                   <img
                     src={user.userAvatar}
                     alt={user.userName}
-                    className="w-12 h-12 rounded-full object-cover border-2 border-gray-300 shadow"
+                    className="w-12 h-12 rounded-full object-cover border-2 border-primary shadow"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       target.src = getUserAvatar(user.userName);
@@ -847,46 +913,109 @@ const LivePicks = () => {
                   {Array.from({ length: maxGames }).map((_, gameIdx) => {
                     // Get the game info for this row to show spreads
                     const gameId = Object.keys(users[0]?.picks || {})[gameIdx];
-                    const game = games.find(g => String(g.gameID) === gameId);
+                    const game = games.find((g) => String(g.gameID) === gameId);
                     const odds = game ? oddsByGameId[game.gameID] : null;
-                    
+
                     return (
                       <div key={gameIdx}>
                         {/* Game info with spreads */}
-                        {game && (() => {
-                          const awayTeam = teams.find(t => t.teamID === game.teamIDAway);
-                          const homeTeam = teams.find(t => t.teamID === game.teamIDHome);
-                          return (
-                            <div className="mb-2 p-2 bg-gray-50 rounded-lg">
-                              <div className="flex items-center justify-between text-sm">
-                                <div className="flex items-center gap-2">
-                                  <img
-                                    src={getTeamLogo(awayTeam?.teamAbv || "")}
-                                    alt={awayTeam?.teamAbv}
-                                    className="w-4 h-4 rounded-full"
-                                  />
-                                  <span className="font-medium">{awayTeam?.teamAbv}</span>
-                                  <span className="text-gray-500">
-                                    {odds?.awayTeamSpread || "PK"}
-                                  </span>
-                                </div>
-                                <span className="text-gray-400">@</span>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-gray-500">
-                                    {odds?.homeTeamSpread || "PK"}
-                                  </span>
-                                  <span className="font-medium">{homeTeam?.teamAbv}</span>
-                                  <img
-                                    src={getTeamLogo(homeTeam?.teamAbv || "")}
-                                    alt={homeTeam?.teamAbv}
-                                    className="w-4 h-4 rounded-full"
-                                  />
+                        {game &&
+                          (() => {
+                            const awayTeam = teams.find(
+                              (t) => t.teamID === game.teamIDAway
+                            );
+                            const homeTeam = teams.find(
+                              (t) => t.teamID === game.teamIDHome
+                            );
+
+                            // Count picks for each team
+                            const awayTeamPicks = users.filter((user) => {
+                              const pick = user.picks[gameIdx];
+                              return pick && pick.team === awayTeam?.teamAbv;
+                            }).length;
+
+                            const homeTeamPicks = users.filter((user) => {
+                              const pick = user.picks[gameIdx];
+                              return pick && pick.team === homeTeam?.teamAbv;
+                            }).length;
+
+                            // Determine which team is the favorite based on spread
+                            const awaySpread = odds?.awayTeamSpread;
+                            const homeSpread = odds?.homeTeamSpread;
+                            const awayIsFavorite = Boolean(
+                              awaySpread && awaySpread.startsWith("-")
+                            );
+                            const homeIsFavorite = Boolean(
+                              homeSpread && homeSpread.startsWith("-")
+                            );
+
+                            // Debug logging
+                            console.log(
+                              `[LIVE PICKS] Game ${game.gameID} odds:`,
+                              {
+                                awaySpread,
+                                homeSpread,
+                                awayIsFavorite,
+                                homeIsFavorite,
+                                odds,
+                              }
+                            );
+
+                            return (
+                              <div className="mb-3 p-3 bg-gradient-to-r from-muted/30 to-muted/50 rounded-lg border">
+                                <div className="flex items-center justify-center">
+                                  <div className="flex items-center gap-3 text-lg font-medium">
+                                    <div className="flex items-center gap-2 p-2 rounded-lg bg-background/50">
+                                      <img
+                                        src={getTeamLogo(
+                                          awayTeam?.teamAbv || ""
+                                        )}
+                                        alt={awayTeam?.teamAbv}
+                                        className="w-6 h-6 rounded-full"
+                                      />
+                                      <span className="font-semibold">
+                                        {awayTeam?.teamAbv}
+                                      </span>
+                                      <div className="text-sm text-muted-foreground font-normal">
+                                        {formatSpread(
+                                          odds?.awayTeamSpread,
+                                          awayIsFavorite
+                                        )}
+                                      </div>
+                                      <div className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-semibold">
+                                        {awayTeamPicks} picks
+                                      </div>
+                                    </div>
+                                    <span className="text-muted-foreground text-xl">
+                                      @
+                                    </span>
+                                    <div className="flex items-center gap-2 p-2 rounded-lg bg-background/50">
+                                      <div className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-semibold">
+                                        {homeTeamPicks} picks
+                                      </div>
+                                      <div className="text-sm text-muted-foreground font-normal">
+                                        {formatSpread(
+                                          odds?.homeTeamSpread,
+                                          homeIsFavorite
+                                        )}
+                                      </div>
+                                      <span className="font-semibold">
+                                        {homeTeam?.teamAbv}
+                                      </span>
+                                      <img
+                                        src={getTeamLogo(
+                                          homeTeam?.teamAbv || ""
+                                        )}
+                                        alt={homeTeam?.teamAbv}
+                                        className="w-6 h-6 rounded-full"
+                                      />
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })()}
-                        
+                            );
+                          })()}
+
                         {/* User picks */}
                         <div className="grid grid-cols-3 gap-3">
                           {users.map((user) => {
@@ -895,18 +1024,15 @@ const LivePicks = () => {
                               return (
                                 <div
                                   key={user.userId}
-                                  className="h-16 rounded-xl bg-gray-100 border border-gray-200"
+                                  className="h-16 rounded-lg bg-muted/50 border border-border"
                                 />
                               );
                             }
                             const teamLogo = getTeamLogo(pick.team);
-                            // Use navy blue colors by default
-                            const bgClass = "bg-blue-900 text-white";
-                            const borderClass = "border-blue-800";
                             return (
                               <div
                                 key={user.userId}
-                                className={`${bgClass} p-3 rounded-xl text-center font-bold text-sm shadow-md border-2 ${borderClass} flex flex-col items-center justify-center`}
+                                className="bg-white text-black p-3 rounded-lg text-center font-bold text-sm shadow-md border-2 border-gray-300 flex flex-col items-center justify-center"
                               >
                                 <img
                                   src={teamLogo}
@@ -930,22 +1056,30 @@ const LivePicks = () => {
                 </div>
               );
             })()}
-          </div>
-        )}
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Enhanced Lock Section */}
-        {!loading && transformedPicks.length > 0 && (
-          <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-4 shadow-sm border border-yellow-100">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">
-              LOCK OF THE WEEK
-            </h2>
+      {/* Lock of the Week */}
+      {!loading && transformedPicks.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Lock className="h-5 w-5" />
+              Lock of the Week
+            </CardTitle>
+            <CardDescription>
+              Each player's most confident pick for double points
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
             <div className="grid grid-cols-3 gap-3">
               {transformedPicks.map((user) => {
                 const teamLogo = getTeamLogo(user.lock.team);
                 return (
                   <div
                     key={user.userId}
-                    className="bg-blue-900 text-white p-4 rounded-xl text-center font-bold text-sm relative shadow-lg border-2 border-blue-800"
+                    className="bg-white text-black p-4 rounded-lg text-center font-bold text-sm relative shadow-lg border-2 border-gray-300"
                   >
                     <div className="flex flex-col items-center gap-2">
                       <img
@@ -973,40 +1107,50 @@ const LivePicks = () => {
                 );
               })}
             </div>
-          </div>
-        )}
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Enhanced TD Scorer Section */}
-        {!loading && transformedPicks.length > 0 && (
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 shadow-sm border border-green-100">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">
-              TOUCHDOWN SCORER
-            </h2>
+      {/* Touchdown Scorer */}
+      {!loading && transformedPicks.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Touchdown Scorer
+            </CardTitle>
+            <CardDescription>
+              Player touchdown scorer predictions
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
             <div className="grid grid-cols-3 gap-4">
               {transformedPicks.map((user) => (
                 <div key={user.userId} className="text-center">
-                  <div className="relative bg-white rounded-xl p-3 shadow-md border border-gray-100">
+                  <div className="relative bg-card rounded-lg p-3 shadow-md border border-border">
                     <div className="flex flex-col items-center gap-2">
                       {user.tdScorer.playerHeadshot ? (
                         <img
                           src={user.tdScorer.playerHeadshot}
                           alt={user.tdScorer.player}
-                          className="w-16 h-16 rounded-full object-cover border-3 border-gray-200 shadow-md"
+                          className="w-16 h-16 rounded-full object-cover border-3 border-border shadow-md"
                           onError={(e) => {
                             const target = e.target as HTMLImageElement;
                             target.src = getUserAvatar(user.userName);
                           }}
                         />
                       ) : (
-                        <div className="w-16 h-16 bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center text-2xl shadow-md">
+                        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center text-2xl shadow-md">
                           🏈
                         </div>
                       )}
                       <div className="text-center">
-                        <p className="text-sm font-bold text-gray-800">
+                        <p className="text-sm font-bold text-foreground">
                           {user.tdScorer.player}
                         </p>
-                        <p className="text-xs text-gray-500">{user.userName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {user.userName}
+                        </p>
                       </div>
                     </div>
                     <div className="absolute -top-2 -right-2">
@@ -1024,32 +1168,42 @@ const LivePicks = () => {
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Enhanced Prop Bet Section */}
-        {!loading && transformedPicks.length > 0 && (
-          <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-4 shadow-sm border border-purple-100">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">PROP BETS</h2>
+      {/* Prop Bet */}
+      {!loading && transformedPicks.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Prop Bet
+            </CardTitle>
+            <CardDescription>
+              Custom proposition bets from players
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
             <div className="space-y-3">
               {transformedPicks.map((user) => (
                 <div key={user.userId} className="relative">
-                  <div className="bg-white p-4 rounded-xl shadow-md border border-gray-100">
+                  <div className="bg-card p-4 rounded-lg shadow-md border border-border">
                     <div className="flex items-center gap-3">
                       <img
                         src={user.userAvatar}
                         alt={user.userName}
-                        className="w-8 h-8 rounded-full object-cover border-2 border-gray-200"
+                        className="w-8 h-8 rounded-full object-cover border-2 border-border"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
                           target.src = getUserAvatar(user.userName);
                         }}
                       />
                       <div className="flex-1">
-                        <p className="text-sm font-semibold text-gray-800">
+                        <p className="text-sm font-semibold text-foreground">
                           {user.propBet.description || "—"}
                         </p>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           {user.userName}
                         </p>
                       </div>
@@ -1069,15 +1223,21 @@ const LivePicks = () => {
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Enhanced Total Points Section */}
-        {!loading && transformedPicks.length > 0 && (
-          <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-4 shadow-sm border border-blue-100">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">
-              TOTAL POINTS
-            </h2>
+      {/* Total Points */}
+      {!loading && transformedPicks.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Total Points
+            </CardTitle>
+            <CardDescription>Current standings for this week</CardDescription>
+          </CardHeader>
+          <CardContent>
             <div className="grid grid-cols-3 gap-4">
               {transformedPicks.map((user, index) => {
                 const isLeader = index === 0; // First user is leader
@@ -1086,9 +1246,11 @@ const LivePicks = () => {
                     <div
                       className={`${
                         isLeader
-                          ? "bg-gradient-to-br from-yellow-400 to-orange-500 text-white shadow-lg scale-105"
-                          : "bg-blue-900 text-white shadow-md"
-                      } p-4 rounded-xl text-2xl font-bold mb-3`}
+                          ? "bg-black text-white shadow-lg scale-105"
+                          : "bg-white text-black shadow-md"
+                      } p-4 rounded-lg text-2xl font-bold mb-3 border-2 ${
+                        isLeader ? "border-black" : "border-gray-300"
+                      }`}
                     >
                       {user.totalPoints}
                     </div>
@@ -1099,7 +1261,7 @@ const LivePicks = () => {
                         className={`w-10 h-10 rounded-full object-cover border-3 ${
                           isLeader
                             ? "border-yellow-400 shadow-lg"
-                            : "border-gray-300"
+                            : "border-border"
                         }`}
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
@@ -1107,7 +1269,7 @@ const LivePicks = () => {
                         }}
                       />
                       <div className="text-center">
-                        <p className="text-sm font-bold text-gray-800">
+                        <p className="text-sm font-bold text-foreground">
                           {user.userName}
                         </p>
                         {isLeader && (
@@ -1121,9 +1283,9 @@ const LivePicks = () => {
                 );
               })}
             </div>
-          </div>
-        )}
-      </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Desktop/Tablet View - Hidden on mobile */}
       <div className="hidden lg:block">
@@ -1151,15 +1313,126 @@ const LivePicks = () => {
                 <CardContent>
                   {loading ? (
                     <div className="text-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-                      <p className="text-gray-600 mt-2">Loading picks...</p>
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                      <p className="text-muted-foreground mt-2">
+                        Loading picks...
+                      </p>
                     </div>
                   ) : transformedPicks.length === 0 ? (
                     <div className="text-center py-8">
-                      <p className="text-gray-600">No picks data available</p>
+                      <p className="text-muted-foreground">
+                        No picks data available
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-4">
+                      {/* Game Summary with Pick Counts */}
+                      <div className="mb-6 p-4 bg-muted/30 rounded-lg">
+                        <h4 className="font-semibold mb-3 text-center">
+                          Pick Distribution by Game
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {games
+                            .filter((g) => {
+                              const weekNum = Number(
+                                g.gameWeek.match(/\d+/)?.[0] ?? NaN
+                              );
+                              return (
+                                !Number.isNaN(weekNum) &&
+                                weekNum === selectedWeek
+                              );
+                            })
+                            .map((game) => {
+                              const awayTeam = teams.find(
+                                (t) => t.teamID === game.teamIDAway
+                              );
+                              const homeTeam = teams.find(
+                                (t) => t.teamID === game.teamIDHome
+                              );
+                              const odds = oddsByGameId[game.gameID];
+
+                              // Count picks for this game
+                              const awayTeamPicks = transformedPicks.filter(
+                                (user) =>
+                                  user.picks.some(
+                                    (pick) => pick.team === awayTeam?.teamAbv
+                                  )
+                              ).length;
+                              const homeTeamPicks = transformedPicks.filter(
+                                (user) =>
+                                  user.picks.some(
+                                    (pick) => pick.team === homeTeam?.teamAbv
+                                  )
+                              ).length;
+
+                              // Determine which team is the favorite based on spread
+                              const awaySpread = odds?.awayTeamSpread;
+                              const homeSpread = odds?.homeTeamSpread;
+                              const awayIsFavorite = Boolean(
+                                awaySpread && awaySpread.startsWith("-")
+                              );
+                              const homeIsFavorite = Boolean(
+                                homeSpread && homeSpread.startsWith("-")
+                              );
+
+                              return (
+                                <div
+                                  key={game.gameID}
+                                  className="p-3 bg-background rounded-lg border"
+                                >
+                                  <div className="flex items-center justify-between text-sm">
+                                    <div className="flex items-center gap-2">
+                                      <img
+                                        src={getTeamLogo(
+                                          awayTeam?.teamAbv || ""
+                                        )}
+                                        alt={awayTeam?.teamAbv}
+                                        className="w-4 h-4 rounded-full"
+                                      />
+                                      <span className="font-medium">
+                                        {awayTeam?.teamAbv}
+                                      </span>
+                                      <span className="text-muted-foreground">
+                                        {formatSpread(
+                                          odds?.awayTeamSpread,
+                                          awayIsFavorite
+                                        )}
+                                      </span>
+                                      <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
+                                        {awayTeamPicks}
+                                      </span>
+                                    </div>
+                                    <span className="text-muted-foreground">
+                                      @
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
+                                        {homeTeamPicks}
+                                      </span>
+                                      <span className="text-muted-foreground">
+                                        {formatSpread(
+                                          odds?.homeTeamSpread,
+                                          homeIsFavorite
+                                        )}
+                                      </span>
+                                      <span className="font-medium">
+                                        {homeTeam?.teamAbv}
+                                      </span>
+                                      <img
+                                        src={getTeamLogo(
+                                          homeTeam?.teamAbv || ""
+                                        )}
+                                        alt={homeTeam?.teamAbv}
+                                        className="w-4 h-4 rounded-full"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+
                       {transformedPicks.map((user) => (
                         <div
                           key={user.userId}
@@ -1186,10 +1459,41 @@ const LivePicks = () => {
                           <div className="grid grid-cols-9 gap-2">
                             {user.picks.map((pick, index) => {
                               const teamLogo = getTeamLogo(pick.team);
+                              // Find the game to get the spread
+                              const game = games.find((g) => {
+                                const awayTeam = teams.find(
+                                  (t) => t.teamID === g.teamIDAway
+                                );
+                                const homeTeam = teams.find(
+                                  (t) => t.teamID === g.teamIDHome
+                                );
+                                return (
+                                  awayTeam?.teamAbv === pick.team ||
+                                  homeTeam?.teamAbv === pick.team
+                                );
+                              });
+                              const odds = game
+                                ? oddsByGameId[game.gameID]
+                                : null;
+                              const isAwayTeam =
+                                game &&
+                                teams.find((t) => t.teamID === game.teamIDAway)
+                                  ?.teamAbv === pick.team;
+                              const rawSpread = isAwayTeam
+                                ? odds?.awayTeamSpread
+                                : odds?.homeTeamSpread;
+                              const isFavorite = Boolean(
+                                rawSpread && rawSpread.startsWith("-")
+                              );
+                              const spread = formatSpread(
+                                rawSpread,
+                                isFavorite
+                              );
+
                               return (
                                 <div
                                   key={index}
-                                  className="bg-blue-900 text-white p-2 rounded-lg text-center text-xs font-bold relative shadow-md border border-blue-800"
+                                  className="bg-white text-black p-2 rounded-lg text-center text-xs font-bold relative shadow-md border border-gray-300"
                                 >
                                   <div className="flex flex-col items-center gap-1">
                                     <img
@@ -1205,6 +1509,9 @@ const LivePicks = () => {
                                     <span className="text-xs font-bold">
                                       {pick.team}
                                     </span>
+                                    <div className="text-xs text-gray-600 font-normal">
+                                      {spread || "LOADING"}
+                                    </div>
                                   </div>
                                   {pick.isCorrect && (
                                     <div className="absolute -top-1 -right-1">
@@ -1236,12 +1543,16 @@ const LivePicks = () => {
                 <CardContent>
                   {loading ? (
                     <div className="text-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-                      <p className="text-gray-600 mt-2">Loading picks...</p>
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                      <p className="text-muted-foreground mt-2">
+                        Loading picks...
+                      </p>
                     </div>
                   ) : transformedPicks.length === 0 ? (
                     <div className="text-center py-8">
-                      <p className="text-gray-600">No picks data available</p>
+                      <p className="text-muted-foreground">
+                        No picks data available
+                      </p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1265,7 +1576,7 @@ const LivePicks = () => {
                                 {user.userName}
                               </span>
                             </div>
-                            <div className="bg-blue-900 text-white p-4 rounded-xl text-center font-bold text-lg relative shadow-lg border-2 border-blue-800">
+                            <div className="bg-white text-black p-4 rounded-lg text-center font-bold text-lg relative shadow-lg border-2 border-gray-300">
                               <div className="flex flex-col items-center gap-2">
                                 <img
                                   src={getTeamLogo(user.lock.team)}
@@ -1308,12 +1619,16 @@ const LivePicks = () => {
                 <CardContent>
                   {loading ? (
                     <div className="text-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-                      <p className="text-gray-600 mt-2">Loading picks...</p>
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                      <p className="text-muted-foreground mt-2">
+                        Loading picks...
+                      </p>
                     </div>
                   ) : transformedPicks.length === 0 ? (
                     <div className="text-center py-8">
-                      <p className="text-gray-600">No picks data available</p>
+                      <p className="text-muted-foreground">
+                        No picks data available
+                      </p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1338,14 +1653,14 @@ const LivePicks = () => {
                               <img
                                 src={user.tdScorer.playerHeadshot}
                                 alt={user.tdScorer.player}
-                                className="w-20 h-20 rounded-full mx-auto mb-2 object-cover border-2 border-gray-300"
+                                className="w-20 h-20 rounded-full mx-auto mb-2 object-cover border-2 border-border"
                                 onError={(e) => {
                                   const target = e.target as HTMLImageElement;
                                   target.src = getUserAvatar(user.userName);
                                 }}
                               />
                             ) : (
-                              <div className="w-20 h-20 bg-gray-200 rounded-full mx-auto mb-2 flex items-center justify-center text-3xl">
+                              <div className="w-20 h-20 bg-muted rounded-full mx-auto mb-2 flex items-center justify-center text-3xl">
                                 🏈
                               </div>
                             )}
@@ -1373,12 +1688,16 @@ const LivePicks = () => {
                 <CardContent>
                   {loading ? (
                     <div className="text-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-                      <p className="text-gray-600 mt-2">Loading picks...</p>
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                      <p className="text-muted-foreground mt-2">
+                        Loading picks...
+                      </p>
                     </div>
                   ) : transformedPicks.length === 0 ? (
                     <div className="text-center py-8">
-                      <p className="text-gray-600">No picks data available</p>
+                      <p className="text-muted-foreground">
+                        No picks data available
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -1401,7 +1720,7 @@ const LivePicks = () => {
                               {user.userName}
                             </span>
                           </div>
-                          <div className="bg-gray-50 p-3 rounded-lg">
+                          <div className="bg-muted/50 p-3 rounded-lg">
                             <p className="font-medium">
                               {user.propBet.description}
                             </p>

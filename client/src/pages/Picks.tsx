@@ -121,7 +121,7 @@ const Picks = () => {
           gameTime: g.gameTime,
         };
       })
-      .filter(g => g.homeTeam && g.awayTeam)
+      .filter((g) => g.homeTeam && g.awayTeam)
       .sort((a, b) => {
         // Sort by game date and time
         const dateA = parseGameDateTime(a.gameDate, a.gameTime);
@@ -136,14 +136,17 @@ const Picks = () => {
     let active = true;
     isHydratingRef.current = true;
     apiClient
-      .get<{ success: boolean; data?: {
-        selections?: Record<string, string>;
-        lockOfWeek?: string;
-        touchdownScorer?: string;
-        propBet?: string;
-        propBetOdds?: string;
-        isFinalized?: boolean;
-      } | null }>(`picks/${selectedWeek}`)
+      .get<{
+        success: boolean;
+        data?: {
+          selections?: Record<string, string>;
+          lockOfWeek?: string;
+          touchdownScorer?: string;
+          propBet?: string;
+          propBetOdds?: string;
+          isFinalized?: boolean;
+        } | null;
+      }>(`picks/${selectedWeek}`)
       .then((res) => {
         if (!active) return;
         const data = res?.data;
@@ -195,7 +198,7 @@ const Picks = () => {
         .filter((n): n is string => Boolean(n))
         .map((n) => Number(n))
         .filter((n) => !Number.isNaN(n));
-      
+
       if (weekNums.length) {
         const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
         setAvailableWeeks(uniqueWeeks);
@@ -207,7 +210,10 @@ const Picks = () => {
             return !Number.isNaN(num) && num === wk;
           });
           const firstUpcoming = gamesForWeek.some((g) => {
-            const dt = parseGameDateTime(g.gameDate as string, g.gameTime as string);
+            const dt = parseGameDateTime(
+              g.gameDate as string,
+              g.gameTime as string
+            );
             return now <= new Date(dt.getTime() + 15 * 60 * 1000);
           });
           return { wk, hasUpcoming: firstUpcoming };
@@ -241,7 +247,7 @@ const Picks = () => {
           .filter((n): n is string => Boolean(n))
           .map((n) => Number(n))
           .filter((n) => !Number.isNaN(n));
-        
+
         if (weekNums.length) {
           const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
           setAvailableWeeks(uniqueWeeks);
@@ -253,7 +259,10 @@ const Picks = () => {
               return !Number.isNaN(num) && num === wk;
             });
             const firstUpcoming = gamesForWeek.some((g) => {
-              const dt = parseGameDateTime(g.gameDate as string, g.gameTime as string);
+              const dt = parseGameDateTime(
+                g.gameDate as string,
+                g.gameTime as string
+              );
               return now <= new Date(dt.getTime() + 15 * 60 * 1000);
             });
             return { wk, hasUpcoming: firstUpcoming };
@@ -285,40 +294,44 @@ const Picks = () => {
       .map((g) => g.raw.gameID)
       .filter((id): id is string => typeof id === "string" && id.length > 0)
       .filter((id) => !memCache.get(`odds:${id}`));
-    
+
     if (toFetch.length === 0) return;
 
     const processRequestsWithDelay = async () => {
-      const results: Array<{ gameId: string; res?: BettingOddsResponse | ApiWrapped<BettingOddsResponse> | undefined }> = [];
-      
+      const results: Array<{
+        gameId: string;
+        res?: BettingOddsResponse | ApiWrapped<BettingOddsResponse> | undefined;
+      }> = [];
+
       for (let i = 0; i < toFetch.length; i++) {
         if (!active) break;
-        
+
         const gameId = toFetch[i];
         try {
-          const res = await apiClient.get<BettingOddsResponse | ApiWrapped<BettingOddsResponse>>(
-            `betting-odds/${encodeURIComponent(gameId)}`,
-            {
-              signal: controller.signal,
-            }
-          );
+          const res = await apiClient.get<
+            BettingOddsResponse | ApiWrapped<BettingOddsResponse>
+          >(`betting-odds/${encodeURIComponent(gameId)}`, {
+            signal: controller.signal,
+          });
           results.push({ gameId, res });
         } catch {
           results.push({ gameId, res: undefined });
         }
-        
+
         if (i < toFetch.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 500));
         }
       }
-      
+
       if (!active) return;
-      
+
       setOddsByGameId((prev) => {
         const next = { ...prev };
         for (const { gameId, res } of results) {
           if (!res) continue;
-          const payload = res as BettingOddsResponse | ApiWrapped<BettingOddsResponse>;
+          const payload = res as
+            | BettingOddsResponse
+            | ApiWrapped<BettingOddsResponse>;
           let odds: BettingOddsResponse["odds"] | undefined;
           if (
             payload &&
@@ -388,13 +401,25 @@ const Picks = () => {
     const gameDateTime = parseGameDateTime(gameDate, gameTime);
     const now = new Date();
     const bufferMinutes = 15;
-    const cutoffTime = new Date(gameDateTime.getTime() + (bufferMinutes * 60 * 1000));
+    const cutoffTime = new Date(
+      gameDateTime.getTime() + bufferMinutes * 60 * 1000
+    );
     return now > cutoffTime;
+  };
+
+  const canEditGame = (gameDate: string, gameTime: string) => {
+    const gameDateTime = parseGameDateTime(gameDate, gameTime);
+    const now = new Date();
+    const lockoutMinutes = 10;
+    const lockoutTime = new Date(
+      gameDateTime.getTime() - lockoutMinutes * 60 * 1000
+    );
+    return now <= lockoutTime;
   };
 
   const canEditPicks = () => {
     if (!selectedWeek || !games.length) return true;
-    
+
     const currentWeekGames = games.filter((g) => {
       const weekNum = Number(g.gameWeek.match(/\d+/)?.[0] ?? NaN);
       return !Number.isNaN(weekNum) && weekNum === selectedWeek;
@@ -402,50 +427,16 @@ const Picks = () => {
 
     if (currentWeekGames.length === 0) return true;
 
-    const now = new Date();
-    
-    // Check for Thursday night game (10 minutes before kickoff)
-    const thursdayGame = currentWeekGames.find((g) => {
-      const gameDateTime = parseGameDateTime(g.gameDate as string, g.gameTime as string);
-      return gameDateTime.getDay() === 4; // Thursday
-    });
-    
-    if (thursdayGame) {
-      const thursdayDateTime = parseGameDateTime(thursdayGame.gameDate as string, thursdayGame.gameTime as string);
-      const lockoutTime = new Date(thursdayDateTime.getTime() - (10 * 60 * 1000)); // 10 minutes before
-      if (now > lockoutTime) return false;
-    }
-
-    // Check for Sunday games (before first kickoff)
-    const sundayGames = currentWeekGames.filter((g) => {
-      const gameDateTime = parseGameDateTime(g.gameDate as string, g.gameTime as string);
-      return gameDateTime.getDay() === 0; // Sunday
+    // Check if ALL games in the week have been completed
+    const allGamesCompleted = currentWeekGames.every((g) => {
+      return isGameStarted(g.gameDate as string, g.gameTime as string);
     });
 
-    if (sundayGames.length > 0) {
-      const firstSundayGame = sundayGames.sort((a, b) => {
-        const dateA = parseGameDateTime(a.gameDate as string, a.gameTime as string);
-        const dateB = parseGameDateTime(b.gameDate as string, b.gameTime as string);
-        return dateA.getTime() - dateB.getTime();
-      })[0];
+    // If all games are completed, picks are locked
+    if (allGamesCompleted) return false;
 
-      const firstSundayGameDateTime = parseGameDateTime(firstSundayGame.gameDate as string, firstSundayGame.gameTime as string);
-      if (now > firstSundayGameDateTime) return false;
-    }
-
-    // Check for Monday games (10 minutes before kickoff, same as Thursday)
-    const mondayGames = currentWeekGames.filter((g) => {
-      const gameDateTime = parseGameDateTime(g.gameDate as string, g.gameTime as string);
-      return gameDateTime.getDay() === 1; // Monday
-    });
-
-    if (mondayGames.length > 0) {
-      const mondayGame = mondayGames[0]; // Assuming only one Monday game
-      const mondayDateTime = parseGameDateTime(mondayGame.gameDate as string, mondayGame.gameTime as string);
-      const lockoutTime = new Date(mondayDateTime.getTime() - (10 * 60 * 1000)); // 10 minutes before
-      if (now > lockoutTime) return false;
-    }
-
+    // For individual games, check if they can still be edited (10 minutes before kickoff)
+    // This will be handled in the UI by disabling individual game buttons
     return true;
   };
 
@@ -475,12 +466,16 @@ const Picks = () => {
       propBetExists: !!propBet,
       propBetLength: propBet?.length || 0,
       propBetOddsExists: !!propBetOdds,
-      propBetOddsLength: propBetOdds?.length || 0
+      propBetOddsLength: propBetOdds?.length || 0,
     });
 
     try {
       console.log("[PICKS] Making API call to picks endpoint");
-      const res = await apiClient.post<{ success?: boolean; data?: unknown; message?: string }>("picks", payload);
+      const res = await apiClient.post<{
+        success?: boolean;
+        data?: unknown;
+        message?: string;
+      }>("picks", payload);
       console.log("[PICKS] Submit response:", res);
       console.log("[PICKS] Response data type:", typeof res.data);
       console.log("[PICKS] Response data value:", res.data);
@@ -503,7 +498,9 @@ const Picks = () => {
         } else {
           alert(`Submit failed: ${message}`);
         }
-      } catch {/* noop */}
+      } catch {
+        /* noop */
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -562,7 +559,13 @@ const Picks = () => {
           </h1>
           <div className="flex items-center gap-4 mt-1">
             <p className="text-muted-foreground">
-              Week {selectedWeek ?? "-"} • {joinedCurrentWeekGames.filter(g => !isGameStarted(g.gameDate, g.gameTime)).length} games
+              Week {selectedWeek ?? "-"} •{" "}
+              {
+                joinedCurrentWeekGames.filter((g) =>
+                  canEditGame(g.gameDate, g.gameTime)
+                ).length
+              }{" "}
+              games available
             </p>
             {!canEditPicks() && (
               <Badge variant="destructive" className="text-sm">
@@ -571,10 +574,16 @@ const Picks = () => {
             )}
             {availableWeeks.length > 1 && (
               <div className="flex items-center gap-2">
-                <Label htmlFor="week-selector" className="text-sm text-muted-foreground">
+                <Label
+                  htmlFor="week-selector"
+                  className="text-sm text-muted-foreground"
+                >
                   Select Week:
                 </Label>
-                <Select value={selectedWeek?.toString() || ""} onValueChange={(value) => setSelectedWeek(Number(value))}>
+                <Select
+                  value={selectedWeek?.toString() || ""}
+                  onValueChange={(value) => setSelectedWeek(Number(value))}
+                >
                   <SelectTrigger className="w-24">
                     <SelectValue placeholder="Week" />
                   </SelectTrigger>
@@ -615,29 +624,38 @@ const Picks = () => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {joinedCurrentWeekGames
-              .filter((g) => !isGameStarted(g.gameDate, g.gameTime))
-              .map((game) => {
+            {joinedCurrentWeekGames.map((game) => {
               const gameStarted = isGameStarted(game.gameDate, game.gameTime);
-              const canEdit = canEditPicks();
+              const canEdit =
+                canEditPicks() && canEditGame(game.gameDate, game.gameTime);
 
               return (
                 <div
                   key={game.id}
                   className={`p-4 border rounded-lg transition-all duration-200 hover:shadow-md ${
-                    gameStarted || !canEdit ? "bg-muted/50 opacity-60" : "hover:border-primary/50"
+                    gameStarted || !canEdit
+                      ? "bg-muted/50 opacity-60"
+                      : "hover:border-primary/50"
                   }`}
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-sm text-muted-foreground">
                       {formatGameTime(game.gameDate, game.gameTime)}
-                      {gameStarted && (
+                      {gameStarted ? (
                         <Badge variant="secondary" className="ml-2 text-xs">
-                          Started
+                          Completed
+                        </Badge>
+                      ) : !canEdit ? (
+                        <Badge variant="destructive" className="ml-2 text-xs">
+                          Locked
+                        </Badge>
+                      ) : (
+                        <Badge variant="default" className="ml-2 text-xs">
+                          Available
                         </Badge>
                       )}
                     </div>
-                    {gameStarted && (
+                    {!canEdit && (
                       <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                     )}
                   </div>
@@ -704,7 +722,8 @@ const Picks = () => {
                       }}
                       onMouseEnter={(e) => {
                         if (
-                          !gameStarted && canEdit &&
+                          !gameStarted &&
+                          canEdit &&
                           picks[game.id] !== game.awayTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "#00000010";
@@ -712,7 +731,8 @@ const Picks = () => {
                       }}
                       onMouseLeave={(e) => {
                         if (
-                          !gameStarted && canEdit &&
+                          !gameStarted &&
+                          canEdit &&
                           picks[game.id] !== game.awayTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "";
@@ -731,7 +751,7 @@ const Picks = () => {
                           </div>
                           <div className="text-xs opacity-80">
                             {oddsByGameId[game.raw.gameID]?.awayTeamSpread ||
-                              "PK"}
+                              "LOADING ..."}
                           </div>
                         </div>
                       </div>
@@ -763,7 +783,8 @@ const Picks = () => {
                       }}
                       onMouseEnter={(e) => {
                         if (
-                          !gameStarted && canEdit &&
+                          !gameStarted &&
+                          canEdit &&
                           picks[game.id] !== game.homeTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "#00000010";
@@ -771,7 +792,8 @@ const Picks = () => {
                       }}
                       onMouseLeave={(e) => {
                         if (
-                          !gameStarted && canEdit &&
+                          !gameStarted &&
+                          canEdit &&
                           picks[game.id] !== game.homeTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "";
@@ -790,7 +812,7 @@ const Picks = () => {
                           </div>
                           <div className="text-xs opacity-80">
                             {oddsByGameId[game.raw.gameID]?.homeTeamSpread ||
-                              "PK"}
+                              "LOADING ..."}
                           </div>
                         </div>
                       </div>
@@ -817,7 +839,13 @@ const Picks = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className={!canEditPicks() ? "opacity-60" : undefined}>
-            <Select value={lockOfWeek} onValueChange={(v) => { if (!canEditPicks()) return; setLockOfWeek(v); }}>
+            <Select
+              value={lockOfWeek}
+              onValueChange={(v) => {
+                if (!canEditPicks()) return;
+                setLockOfWeek(v);
+              }}
+            >
               <SelectTrigger disabled={!canEditPicks()}>
                 <SelectValue placeholder="Select your lock of the week" />
               </SelectTrigger>
@@ -832,7 +860,10 @@ const Picks = () => {
                       : game.homeTeam;
 
                   return (
-                    <SelectItem key={game.id} value={selectedTeam?.teamAbv || ""}>
+                    <SelectItem
+                      key={game.id}
+                      value={selectedTeam?.teamAbv || ""}
+                    >
                       <div className="flex items-center gap-2">
                         {selectedTeam?.espnLogo1 && (
                           <img
@@ -863,7 +894,13 @@ const Picks = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className={!canEditPicks() ? "opacity-60" : undefined}>
-            <Popover open={playerSearchOpen} onOpenChange={(open) => { if (!canEditPicks()) return; setPlayerSearchOpen(open); }}>
+            <Popover
+              open={playerSearchOpen}
+              onOpenChange={(open) => {
+                if (!canEditPicks()) return;
+                setPlayerSearchOpen(open);
+              }}
+            >
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
@@ -981,7 +1018,12 @@ const Picks = () => {
 
       {/* Action buttons */}
       <div className="flex gap-2 justify-end">
-        <Button onClick={handleSubmit} disabled={isSubmitting || !canSubmit()} size="lg" className="min-w-32">
+        <Button
+          onClick={handleSubmit}
+          disabled={isSubmitting || !canSubmit()}
+          size="lg"
+          className="min-w-32"
+        >
           {isSubmitting ? (
             <>
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
