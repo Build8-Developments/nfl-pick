@@ -1,11 +1,22 @@
 import { FANTASY_SCORING_RULES } from "../../api/tank01.js";
 import type { PlayerStats } from "../../api/tank01.js";
-import type { IGameResult } from "../game-results/gameResult.model.js";
 import type { IScoring } from "./scoring.model.js";
 import Scoring from "./scoring.model.js";
 import Pick from "../picks/pick.model.js";
-import GameResult from "../game-results/gameResult.model.js";
 import { ApiResponse } from "../../utils/ApiResponse.js";
+
+// Define IGameResult interface locally since the game-results module was removed
+export interface IGameResult {
+  gameID: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number;
+  awayScore: number;
+  winner: string;
+  isFinal: boolean;
+  gameStatus: string;
+  playerStats: PlayerStats[];
+}
 
 export interface ScoringResult {
   user: string;
@@ -70,10 +81,12 @@ export class ScoringService {
       points += playerStats.passTD * FANTASY_SCORING_RULES.passTD;
     }
     if (playerStats.passCompletions) {
-      points += playerStats.passCompletions * FANTASY_SCORING_RULES.passCompletions;
+      points +=
+        playerStats.passCompletions * FANTASY_SCORING_RULES.passCompletions;
     }
     if (playerStats.passInterceptions) {
-      points += playerStats.passInterceptions * FANTASY_SCORING_RULES.passInterceptions;
+      points +=
+        playerStats.passInterceptions * FANTASY_SCORING_RULES.passInterceptions;
     }
 
     // Rushing stats
@@ -92,10 +105,12 @@ export class ScoringService {
 
     // Receiving stats
     if (playerStats.receptions) {
-      points += playerStats.receptions * FANTASY_SCORING_RULES.pointsPerReception;
+      points +=
+        playerStats.receptions * FANTASY_SCORING_RULES.pointsPerReception;
     }
     if (playerStats.receivingYards) {
-      points += playerStats.receivingYards * FANTASY_SCORING_RULES.receivingYards;
+      points +=
+        playerStats.receivingYards * FANTASY_SCORING_RULES.receivingYards;
     }
     if (playerStats.receivingTD) {
       points += playerStats.receivingTD * FANTASY_SCORING_RULES.receivingTD;
@@ -120,7 +135,8 @@ export class ScoringService {
 
     // Defense stats
     if (playerStats.totalTackles) {
-      points += playerStats.totalTackles * FANTASY_SCORING_RULES.idpTotalTackles;
+      points +=
+        playerStats.totalTackles * FANTASY_SCORING_RULES.idpTotalTackles;
     }
     if (playerStats.soloTackles) {
       points += playerStats.soloTackles * FANTASY_SCORING_RULES.idpSoloTackles;
@@ -138,10 +154,13 @@ export class ScoringService {
       points += playerStats.sacks * FANTASY_SCORING_RULES.idpSacks;
     }
     if (playerStats.passDeflections) {
-      points += playerStats.passDeflections * FANTASY_SCORING_RULES.idpPassDeflections;
+      points +=
+        playerStats.passDeflections * FANTASY_SCORING_RULES.idpPassDeflections;
     }
     if (playerStats.fumblesRecovered) {
-      points += playerStats.fumblesRecovered * FANTASY_SCORING_RULES.idpFumblesRecovered;
+      points +=
+        playerStats.fumblesRecovered *
+        FANTASY_SCORING_RULES.idpFumblesRecovered;
     }
 
     return Math.round(points * 100) / 100; // Round to 2 decimal places
@@ -159,7 +178,12 @@ export class ScoringService {
   /**
    * Determine the winner of a game based on scores
    */
-  static determineWinner(homeScore: number, awayScore: number, homeTeam: string, awayTeam: string): string {
+  static determineWinner(
+    homeScore: number,
+    awayScore: number,
+    homeTeam: string,
+    awayTeam: string
+  ): string {
     if (homeScore > awayScore) {
       return homeTeam;
     } else if (awayScore > homeScore) {
@@ -172,12 +196,15 @@ export class ScoringService {
   /**
    * Find the player who scored the most touchdowns in a game
    */
-  static findTopTouchdownScorer(playerStats: PlayerStats[]): { playerID: string; playerName: string; touchdowns: number } | null {
+  static findTopTouchdownScorer(
+    playerStats: PlayerStats[]
+  ): { playerID: string; playerName: string; touchdowns: number } | null {
     let topScorer = null;
     let maxTouchdowns = 0;
 
     for (const player of playerStats) {
-      const totalTDs = (player.passTD || 0) + (player.rushTD || 0) + (player.receivingTD || 0);
+      const totalTDs =
+        (player.passTD || 0) + (player.rushTD || 0) + (player.receivingTD || 0);
       if (totalTDs > maxTouchdowns) {
         maxTouchdowns = totalTDs;
         topScorer = {
@@ -189,6 +216,78 @@ export class ScoringService {
     }
 
     return maxTouchdowns > 0 ? topScorer : null;
+  }
+
+  /**
+   * Get user's scoring for a specific week
+   */
+  static async getUserWeekScoring(
+    userId: string,
+    week: number,
+    season: number
+  ): Promise<{ success: boolean; data?: any; message?: string }> {
+    try {
+      const scoringRecords = await Scoring.find({
+        user: userId,
+        week,
+        season,
+      });
+
+      if (scoringRecords.length === 0) {
+        return {
+          success: true,
+          data: {
+            totalPoints: 0,
+            fantasyPoints: 0,
+            correctPicks: 0,
+            totalPicks: 0,
+            gameResults: [],
+          },
+          message: "No scoring records found for this week",
+        };
+      }
+
+      const totalPoints = scoringRecords.reduce(
+        (sum, record) => sum + record.pointsEarned,
+        0
+      );
+      const fantasyPoints = scoringRecords.reduce(
+        (sum, record) => sum + record.fantasyPoints,
+        0
+      );
+      const correctPicks = scoringRecords.filter(
+        (record) => record.pickCorrect
+      ).length;
+      const totalPicks = scoringRecords.length;
+
+      return {
+        success: true,
+        data: {
+          totalPoints,
+          fantasyPoints,
+          correctPicks,
+          totalPicks,
+          gameResults: scoringRecords.map((record) => ({
+            gameID: record.gameID,
+            homeTeam: record.homeTeam,
+            awayTeam: record.awayTeam,
+            homeScore: record.homeScore,
+            awayScore: record.awayScore,
+            winner: record.winner,
+            pointsEarned: record.pointsEarned,
+            fantasyPoints: record.fantasyPoints,
+            pickCorrect: record.pickCorrect,
+          })),
+        },
+        message: "User scoring retrieved successfully",
+      };
+    } catch (error) {
+      console.error("[ScoringService] Error in getUserWeekScoring:", error);
+      return {
+        success: false,
+        message: "Failed to retrieve user scoring",
+      };
+    }
   }
 
   /**
@@ -216,7 +315,7 @@ export class ScoringService {
       const selectedTeam = userPick.selections[gameResult.gameID];
       const isCorrect = selectedTeam === winner;
       const points = isCorrect ? 1 : 0; // 1 point for correct spread pick
-      
+
       pickResults.spreadPick = {
         selectedTeam,
         actualWinner: winner,
@@ -227,11 +326,15 @@ export class ScoringService {
     }
 
     // Evaluate lock pick (if it's for this game)
-    if (userPick.lockOfWeek && (userPick.lockOfWeek === gameResult.homeTeam || userPick.lockOfWeek === gameResult.awayTeam)) {
+    if (
+      userPick.lockOfWeek &&
+      (userPick.lockOfWeek === gameResult.homeTeam ||
+        userPick.lockOfWeek === gameResult.awayTeam)
+    ) {
       const selectedTeam = userPick.lockOfWeek;
       const isCorrect = selectedTeam === winner;
       const points = isCorrect ? 2 : 0; // 2 points for correct lock pick
-      
+
       pickResults.lockPick = {
         selectedTeam,
         actualWinner: winner,
@@ -244,15 +347,16 @@ export class ScoringService {
     // Evaluate touchdown scorer (if specified)
     if (userPick.touchdownScorer) {
       const topScorer = this.findTopTouchdownScorer(gameResult.playerStats);
-      const isCorrect = topScorer && topScorer.playerID === userPick.touchdownScorer;
+      const isCorrect =
+        topScorer && topScorer.playerID === userPick.touchdownScorer;
       const points = isCorrect ? 3 : 0; // 3 points for correct TD scorer
-      
+
       pickResults.touchdownScorer = {
         selectedPlayer: userPick.touchdownScorer,
         selectedPlayerName: userPick.touchdownScorerName || "Unknown Player",
         actualScorer: topScorer?.playerID || "",
         actualScorerName: topScorer?.playerName || "No TD Scorer",
-        isCorrect,
+        isCorrect: isCorrect || false,
         points,
       };
       totalPoints += points;
@@ -263,7 +367,7 @@ export class ScoringService {
       // For now, prop bets are manually evaluated - this could be enhanced with more complex logic
       const isCorrect = false; // Placeholder - would need specific prop bet evaluation logic
       const points = isCorrect ? 5 : 0; // 5 points for correct prop bet
-      
+
       pickResults.propBet = {
         description: userPick.propBet,
         isCorrect,
@@ -275,7 +379,7 @@ export class ScoringService {
     // Calculate fantasy points for the user's selected players
     if (userPick.touchdownScorer) {
       const selectedPlayer = gameResult.playerStats.find(
-        p => p.playerID === userPick.touchdownScorer
+        (p) => p.playerID === userPick.touchdownScorer
       );
       if (selectedPlayer) {
         fantasyPoints = this.calculatePlayerFantasyPoints(selectedPlayer);

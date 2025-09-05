@@ -68,7 +68,7 @@ export const getLocalBettingOddsForGame = async (gameId: string) => {
         // Create mock data for testing
         const mockOdds = {
           gameID: gameId,
-          gameDate: new Date().toISOString().split("T")[0].replace(/-/g, ""),
+          gameDate: new Date().toISOString().split("T")[0]!.replace(/-/g, ""),
           homeTeam: "HOME",
           awayTeam: "AWAY",
           teamIDHome: "1",
@@ -103,7 +103,7 @@ export const getLocalBettingOddsForGame = async (gameId: string) => {
       );
       const mockOdds = {
         gameID: gameId,
-        gameDate: new Date().toISOString().split("T")[0].replace(/-/g, ""),
+        gameDate: new Date().toISOString().split("T")[0]!.replace(/-/g, ""),
         homeTeam: "HOME",
         awayTeam: "AWAY",
         teamIDHome: "1",

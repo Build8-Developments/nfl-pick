@@ -119,15 +119,15 @@ server.use(errorHandler);
       );
 
       // Schedule: Every 2 minutes, resolve current week outcomes
-      cron.schedule("*/2 * * * *", async () => {
-        try {
-          const { week } = await syncWeekGames();
-          await resolveWeek(week);
-          console.log(`[Scheduler] Resolved outcomes for week ${week}`);
-        } catch (err) {
-          console.error("[Scheduler] Failed resolving outcomes:", err);
-        }
-      });
+      // cron.schedule("*/2 * * * *", async () => {
+      //   try {
+      //     const { week } = await syncWeekGames();
+      //     await resolveWeekOutcomes(week as number);
+      //     console.log(`[Scheduler] Resolved outcomes for week ${week}`);
+      //   } catch (err) {
+      //     console.error("[Scheduler] Failed resolving outcomes:", err);
+      //   }
+      // });
       console.log("[Scheduler] Outcome resolver scheduled: every 2 minutes");
     });
   } catch (error) {

@@ -6,18 +6,18 @@ import { ApiResponse } from "../../utils/ApiResponse.js";
 export const getLeaderboard = async (req: Request, res: Response) => {
   try {
     const { week, season, includeFantasy } = req.query;
-    
+
     console.log("[Leaderboard] Getting leaderboard data...");
-    
+
     // If specific week/season requested, use scoring data
     if (week && season) {
       const weekNum = parseInt(week as string);
       const seasonNum = parseInt(season as string);
-      
+
       if (isNaN(weekNum) || isNaN(seasonNum)) {
-        return res.status(400).json(
-          ApiResponse.error("Week and season must be valid numbers")
-        );
+        return res
+          .status(400)
+          .json(ApiResponse.error("Week and season must be valid numbers"));
       }
 
       const pipeline = [
@@ -63,8 +63,10 @@ export const getLeaderboard = async (req: Request, res: Response) => {
         { $sort: { totalPoints: -1, fantasyPoints: -1, winPct: -1 } },
       ];
 
-      const rows = await Scoring.aggregate(pipeline);
-      return res.json(ApiResponse.success(rows, "Leaderboard retrieved successfully"));
+      const rows = await Scoring.aggregate(pipeline as any);
+      return res.json(
+        ApiResponse.success(rows, "Leaderboard retrieved successfully")
+      );
     }
 
     // Default: aggregate wins/losses based on isCorrect flags when set
@@ -132,14 +134,17 @@ export const getLeaderboard = async (req: Request, res: Response) => {
 
     const rows = await Pick.aggregate(pipeline as any);
     console.log(`[Leaderboard] Found ${rows.length} season standings records`);
-    return res.json(ApiResponse.success(rows, "Leaderboard retrieved successfully"));
-
+    return res.json(
+      ApiResponse.success(rows, "Leaderboard retrieved successfully")
+    );
   } catch (error) {
     console.error("[Leaderboard] Error getting leaderboard:", error);
-    return res.status(500).json(
-      ApiResponse.error("Failed to retrieve leaderboard: " + (error as Error).message)
-    );
+    return res
+      .status(500)
+      .json(
+        ApiResponse.error(
+          "Failed to retrieve leaderboard: " + (error as Error).message
+        )
+      );
   }
 };
-
-
