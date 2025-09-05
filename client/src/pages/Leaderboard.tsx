@@ -22,24 +22,31 @@ import {
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import type { IGame } from "@/types/game.type";
 
 const Leaderboard = () => {
   // Enhanced types for real data
-  type SeasonRow = { 
-    user: string; 
+  type SeasonRow = {
+    user: string;
     username: string;
     avatar?: string;
-    wins: number; 
-    losses: number; 
+    wins: number;
+    losses: number;
     winPct: number;
     totalPoints?: number;
     fantasyPoints?: number;
     email?: string;
     role?: string;
   };
-  
+
   type WeeklyRow = {
     user: string;
     username: string;
@@ -66,23 +73,25 @@ const Leaderboard = () => {
       try {
         const [weeksRes, gamesRes] = await Promise.all([
           apiClient.get<{ success: boolean; data?: number[] }>("picks/weeks"),
-          apiClient.get<{ success: boolean; data?: any[] }>("games")
+          apiClient.get<{ success: boolean; data?: IGame[] }>("games"),
         ]);
-        
+
         const weeks = Array.isArray(weeksRes.data) ? weeksRes.data : [];
         const games = Array.isArray(gamesRes.data) ? gamesRes.data : [];
-        
+
         // Extract weeks from games data
         const gameWeeks = games
-          .map(g => g.gameWeek)
-          .map(w => typeof w === "string" ? w.match(/\d+/)?.[0] : undefined)
+          .map((g) => g.gameWeek)
+          .map((w) => (typeof w === "string" ? w.match(/\d+/)?.[0] : undefined))
           .filter((n): n is string => Boolean(n))
-          .map(n => Number(n))
-          .filter(n => !Number.isNaN(n));
-        
-        const allWeeks = [...new Set([...weeks, ...gameWeeks])].sort((a, b) => a - b);
+          .map((n) => Number(n))
+          .filter((n) => !Number.isNaN(n));
+
+        const allWeeks = [...new Set([...weeks, ...gameWeeks])].sort(
+          (a, b) => a - b
+        );
         setAvailableWeeks(allWeeks);
-        
+
         // Set current week to the latest available
         if (allWeeks.length > 0) {
           setSelectedWeek(Math.max(...allWeeks));
@@ -92,7 +101,7 @@ const Leaderboard = () => {
         setError("Failed to load available weeks");
       }
     };
-    
+
     loadWeeks();
   }, []);
 
@@ -100,17 +109,22 @@ const Leaderboard = () => {
   const loadSeasonStandings = useCallback(async () => {
     try {
       setError(null);
-      const res = await apiClient.get<{ success?: boolean; data?: SeasonRow[] }>("leaderboard");
+      const res = await apiClient.get<{
+        success?: boolean;
+        data?: SeasonRow[];
+      }>("leaderboard");
       const data = Array.isArray(res?.data) ? (res.data as SeasonRow[]) : [];
       setSeasonStandings(data);
-      
+
       // If no data, show a helpful message
       if (data.length === 0) {
         console.log("No season standings data available");
       }
     } catch (err) {
       console.error("Error loading season standings:", err);
-      setError("Failed to load season standings. The database might be empty or there's a connection issue.");
+      setError(
+        "Failed to load season standings. The database might be empty or there's a connection issue."
+      );
       setSeasonStandings([]);
     }
   }, []);
@@ -119,19 +133,22 @@ const Leaderboard = () => {
   const loadWeeklyStandings = useCallback(async (week: number) => {
     try {
       setError(null);
-      const res = await apiClient.get<{ success?: boolean; data?: WeeklyRow[] }>(
-        `live-scoring/leaderboard?week=${week}&season=2025`
-      );
+      const res = await apiClient.get<{
+        success?: boolean;
+        data?: WeeklyRow[];
+      }>(`live-scoring/leaderboard?week=${week}&season=2025`);
       const data = Array.isArray(res?.data) ? (res.data as WeeklyRow[]) : [];
       setWeeklyStandings(data);
-      
+
       // If no data, show a helpful message
       if (data.length === 0) {
         console.log(`No weekly standings data available for week ${week}`);
       }
     } catch (err) {
       console.error("Error loading weekly standings:", err);
-      setError("Failed to load weekly standings. No scoring data available for this week.");
+      setError(
+        "Failed to load weekly standings. No scoring data available for this week."
+      );
       setWeeklyStandings([]);
     }
   }, []);
@@ -142,11 +159,11 @@ const Leaderboard = () => {
       setLoading(true);
       await Promise.all([
         loadSeasonStandings(),
-        selectedWeek ? loadWeeklyStandings(selectedWeek) : Promise.resolve()
+        selectedWeek ? loadWeeklyStandings(selectedWeek) : Promise.resolve(),
       ]);
       setLoading(false);
     };
-    
+
     loadData();
   }, [selectedWeek, loadSeasonStandings, loadWeeklyStandings]);
 
@@ -167,7 +184,7 @@ const Leaderboard = () => {
     setIsRefreshing(true);
     await Promise.all([
       loadSeasonStandings(),
-      selectedWeek ? loadWeeklyStandings(selectedWeek) : Promise.resolve()
+      selectedWeek ? loadWeeklyStandings(selectedWeek) : Promise.resolve(),
     ]);
     setIsRefreshing(false);
     setJustUpdated(true);
@@ -194,12 +211,11 @@ const Leaderboard = () => {
     return "outline";
   };
 
-
   // Helper function to get user avatar
-  const getUserAvatar = (avatar?: string, username?: string) => {
+  const getUserAvatar = (avatar?: string) => {
     if (avatar) {
       // Handle both relative and absolute URLs
-      if (avatar.startsWith('http')) {
+      if (avatar.startsWith("http")) {
         return avatar;
       }
       return `http://localhost:3000${avatar}`;
@@ -207,7 +223,6 @@ const Leaderboard = () => {
     // Fallback to default avatar
     return "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face";
   };
-
 
   return (
     <div className="space-y-6">
@@ -250,7 +265,9 @@ const Leaderboard = () => {
               disabled={isRefreshing}
               className="text-gray-700 hover:bg-gray-100 border border-gray-300"
             >
-              <RefreshCw className={`h-5 w-5 ${isRefreshing ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`h-5 w-5 ${isRefreshing ? "animate-spin" : ""}`}
+              />
             </Button>
             {justUpdated && (
               <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 border border-green-300">
@@ -303,10 +320,13 @@ const Leaderboard = () => {
                   <div className="text-center py-8">
                     <div className="space-y-4">
                       <div className="text-6xl">🏈</div>
-                      <h3 className="text-lg font-semibold text-gray-800">No Season Data Available</h3>
+                      <h3 className="text-lg font-semibold text-gray-800">
+                        No Season Data Available
+                      </h3>
                       <p className="text-gray-600 max-w-md mx-auto">
-                        No users have submitted picks yet, or the database is empty. 
-                        Users need to make picks for the leaderboard to populate.
+                        No users have submitted picks yet, or the database is
+                        empty. Users need to make picks for the leaderboard to
+                        populate.
                       </p>
                     </div>
                   </div>
@@ -328,7 +348,7 @@ const Leaderboard = () => {
                             </Badge>
                           </div>
                           <img
-                            src={getUserAvatar(user.avatar, user.username)}
+                            src={getUserAvatar(user.avatar)}
                             alt={user.username}
                             className="w-12 h-12 rounded-full object-cover border-2 border-gray-200"
                             onError={(e) => {
@@ -352,7 +372,9 @@ const Leaderboard = () => {
                         </div>
                         <div className="text-right">
                           <div className="text-2xl font-bold">{user.wins}</div>
-                          <div className="text-sm text-muted-foreground">wins</div>
+                          <div className="text-sm text-muted-foreground">
+                            wins
+                          </div>
                           {user.totalPoints !== undefined && (
                             <div className="text-xs text-muted-foreground">
                               {user.totalPoints} pts
@@ -398,14 +420,16 @@ const Leaderboard = () => {
                   <div className="text-2xl font-bold">
                     {seasonStandings
                       .slice()
-                      .sort((a, b) => b.winPct - a.winPct)[0]?.username || "N/A"}
+                      .sort((a, b) => b.winPct - a.winPct)[0]?.username ||
+                      "N/A"}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {(
                       seasonStandings
                         .slice()
                         .sort((a, b) => b.winPct - a.winPct)[0]?.winPct ?? 0
-                    ).toFixed(1)}%
+                    ).toFixed(1)}
+                    %
                   </p>
                 </CardContent>
               </Card>
@@ -458,10 +482,13 @@ const Leaderboard = () => {
                     <div className="text-center py-8">
                       <div className="space-y-4">
                         <div className="text-6xl">📊</div>
-                        <h3 className="text-lg font-semibold text-gray-800">No Weekly Data Available</h3>
+                        <h3 className="text-lg font-semibold text-gray-800">
+                          No Weekly Data Available
+                        </h3>
                         <p className="text-gray-600 max-w-md mx-auto">
-                          No scoring data available for Week {selectedWeek}. 
-                          Games may not have finished yet or no picks were submitted.
+                          No scoring data available for Week {selectedWeek}.
+                          Games may not have finished yet or no picks were
+                          submitted.
                         </p>
                       </div>
                     </div>
@@ -483,7 +510,7 @@ const Leaderboard = () => {
                               </Badge>
                             </div>
                             <img
-                              src={getUserAvatar(user.avatar, user.username)}
+                              src={getUserAvatar(user.avatar)}
                               alt={user.username}
                               className="w-12 h-12 rounded-full object-cover border-2 border-gray-200"
                               onError={(e) => {
@@ -496,7 +523,8 @@ const Leaderboard = () => {
                                 {user.username || "Unknown User"}
                               </div>
                               <div className="text-sm text-muted-foreground">
-                                {user.correctPicks}/{user.totalPicks} correct picks
+                                {user.correctPicks}/{user.totalPicks} correct
+                                picks
                               </div>
                               <div className="text-xs text-muted-foreground">
                                 {user.winPercentage.toFixed(1)}% accuracy
@@ -504,8 +532,12 @@ const Leaderboard = () => {
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-2xl font-bold">{user.totalPoints}</div>
-                            <div className="text-sm text-muted-foreground">points</div>
+                            <div className="text-2xl font-bold">
+                              {user.totalPoints}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              points
+                            </div>
                             {user.fantasyPoints > 0 && (
                               <div className="text-xs text-muted-foreground">
                                 {user.fantasyPoints.toFixed(1)} fantasy pts
@@ -550,14 +582,18 @@ const Leaderboard = () => {
                       <div className="text-2xl font-bold">
                         {weeklyStandings
                           .slice()
-                          .sort((a, b) => b.winPercentage - a.winPercentage)[0]?.username || "N/A"}
+                          .sort((a, b) => b.winPercentage - a.winPercentage)[0]
+                          ?.username || "N/A"}
                       </div>
                       <p className="text-xs text-muted-foreground">
                         {(
                           weeklyStandings
                             .slice()
-                            .sort((a, b) => b.winPercentage - a.winPercentage)[0]?.winPercentage || 0
-                        ).toFixed(1)}%
+                            .sort(
+                              (a, b) => b.winPercentage - a.winPercentage
+                            )[0]?.winPercentage || 0
+                        ).toFixed(1)}
+                        %
                       </p>
                     </CardContent>
                   </Card>
@@ -593,7 +629,9 @@ const Leaderboard = () => {
             </div>
           ) : !selectedWeek ? (
             <div className="text-center py-8">
-              <p className="text-gray-600">Select a week to view scoring breakdown</p>
+              <p className="text-gray-600">
+                Select a week to view scoring breakdown
+              </p>
             </div>
           ) : (
             <div className="space-y-6">
@@ -612,10 +650,13 @@ const Leaderboard = () => {
                     <div className="text-center py-8">
                       <div className="space-y-4">
                         <div className="text-6xl">🎯</div>
-                        <h3 className="text-lg font-semibold text-gray-800">No Scoring Breakdown Available</h3>
+                        <h3 className="text-lg font-semibold text-gray-800">
+                          No Scoring Breakdown Available
+                        </h3>
                         <p className="text-gray-600 max-w-md mx-auto">
-                          No scoring data available for Week {selectedWeek}. 
-                          Users need to submit picks and games need to finish for scoring to be calculated.
+                          No scoring data available for Week {selectedWeek}.
+                          Users need to submit picks and games need to finish
+                          for scoring to be calculated.
                         </p>
                       </div>
                     </div>
@@ -646,7 +687,10 @@ const Leaderboard = () => {
 
                       {/* Player Breakdown */}
                       {weeklyStandings.map((user, index) => (
-                        <Card key={`breakdown-${user.user}`} className="border-l-4 border-l-blue-500">
+                        <Card
+                          key={`breakdown-${user.user}`}
+                          className="border-l-4 border-l-blue-500"
+                        >
                           <CardHeader className="pb-3">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3">
@@ -657,7 +701,7 @@ const Leaderboard = () => {
                                   #{index + 1}
                                 </Badge>
                                 <img
-                                  src={getUserAvatar(user.avatar, user.username)}
+                                  src={getUserAvatar(user.avatar)}
                                   alt={user.username}
                                   className="w-10 h-10 rounded-full object-cover border-2 border-gray-200"
                                   onError={(e) => {
@@ -670,7 +714,8 @@ const Leaderboard = () => {
                                     {user.username || "Unknown User"}
                                   </h3>
                                   <p className="text-sm text-muted-foreground">
-                                    {user.correctPicks}/{user.totalPicks} correct picks
+                                    {user.correctPicks}/{user.totalPicks}{" "}
+                                    correct picks
                                   </p>
                                 </div>
                               </div>
@@ -678,7 +723,9 @@ const Leaderboard = () => {
                                 <div className="text-2xl font-bold text-blue-600">
                                   {user.totalPoints}
                                 </div>
-                                <div className="text-sm text-muted-foreground">total points</div>
+                                <div className="text-sm text-muted-foreground">
+                                  total points
+                                </div>
                               </div>
                             </div>
                           </CardHeader>
@@ -688,13 +735,16 @@ const Leaderboard = () => {
                               <div className="bg-blue-50 p-3 rounded-lg">
                                 <div className="flex items-center gap-2 mb-2">
                                   <div className="w-3 h-3 bg-blue-500 rounded"></div>
-                                  <span className="font-medium text-sm">Spread Picks</span>
+                                  <span className="font-medium text-sm">
+                                    Spread Picks
+                                  </span>
                                 </div>
                                 <div className="text-2xl font-bold text-blue-600">
                                   {user.correctPicks}
                                 </div>
                                 <div className="text-xs text-muted-foreground">
-                                  {user.correctPicks} × 1 pt = {user.correctPicks} pts
+                                  {user.correctPicks} × 1 pt ={" "}
+                                  {user.correctPicks} pts
                                 </div>
                               </div>
 
@@ -702,7 +752,9 @@ const Leaderboard = () => {
                               <div className="bg-yellow-50 p-3 rounded-lg">
                                 <div className="flex items-center gap-2 mb-2">
                                   <div className="w-3 h-3 bg-yellow-500 rounded"></div>
-                                  <span className="font-medium text-sm">Lock Pick</span>
+                                  <span className="font-medium text-sm">
+                                    Lock Pick
+                                  </span>
                                 </div>
                                 <div className="text-2xl font-bold text-yellow-600">
                                   {user.correctPicks > 0 ? "✓" : "✗"}
@@ -716,7 +768,9 @@ const Leaderboard = () => {
                               <div className="bg-green-50 p-3 rounded-lg">
                                 <div className="flex items-center gap-2 mb-2">
                                   <div className="w-3 h-3 bg-green-500 rounded"></div>
-                                  <span className="font-medium text-sm">TD Scorer</span>
+                                  <span className="font-medium text-sm">
+                                    TD Scorer
+                                  </span>
                                 </div>
                                 <div className="text-2xl font-bold text-green-600">
                                   {user.correctPicks > 0 ? "✓" : "✗"}
@@ -730,7 +784,9 @@ const Leaderboard = () => {
                               <div className="bg-purple-50 p-3 rounded-lg">
                                 <div className="flex items-center gap-2 mb-2">
                                   <div className="w-3 h-3 bg-purple-500 rounded"></div>
-                                  <span className="font-medium text-sm">Prop Bet</span>
+                                  <span className="font-medium text-sm">
+                                    Prop Bet
+                                  </span>
                                 </div>
                                 <div className="text-2xl font-bold text-purple-600">
                                   {user.correctPicks > 0 ? "✓" : "✗"}
@@ -745,7 +801,9 @@ const Leaderboard = () => {
                             {user.fantasyPoints > 0 && (
                               <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                                 <div className="flex items-center justify-between">
-                                  <span className="font-medium text-sm">Fantasy Points</span>
+                                  <span className="font-medium text-sm">
+                                    Fantasy Points
+                                  </span>
                                   <span className="text-lg font-bold text-gray-700">
                                     {user.fantasyPoints.toFixed(1)}
                                   </span>
