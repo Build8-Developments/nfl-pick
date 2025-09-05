@@ -79,6 +79,25 @@ const Picks = () => {
   };
   type ApiWrapped<T> = { success?: boolean; data?: T };
 
+  const parseGameDateTime = (gameDate: string, gameTime: string) => {
+    const yyyy = Number(gameDate.slice(0, 4));
+    const mm = Number(gameDate.slice(4, 6));
+    const dd = Number(gameDate.slice(6, 8));
+    const timeMatch = gameTime
+      .trim()
+      .match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
+    let hours = 12;
+    let minutes = 0;
+    if (timeMatch) {
+      hours = Number(timeMatch[1]);
+      minutes = timeMatch[2] ? Number(timeMatch[2]) : 0;
+      const meridiem = timeMatch[3].toLowerCase();
+      if (meridiem === "p" && hours !== 12) hours += 12;
+      if (meridiem === "a" && hours === 12) hours = 0;
+    }
+    return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
+  };
+
   const teamIdToTeam = useMemo(() => {
     return new Map<string, ITeam>(teams.map((t) => [t.teamID, t]));
   }, [teams]);
@@ -102,7 +121,13 @@ const Picks = () => {
           gameTime: g.gameTime,
         };
       })
-      .filter(g => g.homeTeam && g.awayTeam);
+      .filter((g) => g.homeTeam && g.awayTeam)
+      .sort((a, b) => {
+        // Sort by game date and time
+        const dateA = parseGameDateTime(a.gameDate, a.gameTime);
+        const dateB = parseGameDateTime(b.gameDate, b.gameTime);
+        return dateA.getTime() - dateB.getTime();
+      });
   }, [games, teamIdToTeam, selectedWeek]);
 
   // Load user's saved picks for selectedWeek
@@ -111,14 +136,17 @@ const Picks = () => {
     let active = true;
     isHydratingRef.current = true;
     apiClient
-      .get<{ success: boolean; data?: {
-        selections?: Record<string, string>;
-        lockOfWeek?: string;
-        touchdownScorer?: string;
-        propBet?: string;
-        propBetOdds?: string;
-        isFinalized?: boolean;
-      } | null }>(`picks/${selectedWeek}`)
+      .get<{
+        success: boolean;
+        data?: {
+          selections?: Record<string, string>;
+          lockOfWeek?: string;
+          touchdownScorer?: string;
+          propBet?: string;
+          propBetOdds?: string;
+          isFinalized?: boolean;
+        } | null;
+      }>(`picks/${selectedWeek}`)
       .then((res) => {
         if (!active) return;
         const data = res?.data;
@@ -170,7 +198,7 @@ const Picks = () => {
         .filter((n): n is string => Boolean(n))
         .map((n) => Number(n))
         .filter((n) => !Number.isNaN(n));
-      
+
       if (weekNums.length) {
         const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
         setAvailableWeeks(uniqueWeeks);
@@ -182,7 +210,10 @@ const Picks = () => {
             return !Number.isNaN(num) && num === wk;
           });
           const firstUpcoming = gamesForWeek.some((g) => {
-            const dt = parseGameDateTime(g.gameDate as string, g.gameTime as string);
+            const dt = parseGameDateTime(
+              g.gameDate as string,
+              g.gameTime as string
+            );
             return now <= new Date(dt.getTime() + 15 * 60 * 1000);
           });
           return { wk, hasUpcoming: firstUpcoming };
@@ -216,7 +247,7 @@ const Picks = () => {
           .filter((n): n is string => Boolean(n))
           .map((n) => Number(n))
           .filter((n) => !Number.isNaN(n));
-        
+
         if (weekNums.length) {
           const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
           setAvailableWeeks(uniqueWeeks);
@@ -228,7 +259,10 @@ const Picks = () => {
               return !Number.isNaN(num) && num === wk;
             });
             const firstUpcoming = gamesForWeek.some((g) => {
-              const dt = parseGameDateTime(g.gameDate as string, g.gameTime as string);
+              const dt = parseGameDateTime(
+                g.gameDate as string,
+                g.gameTime as string
+              );
               return now <= new Date(dt.getTime() + 15 * 60 * 1000);
             });
             return { wk, hasUpcoming: firstUpcoming };
@@ -260,40 +294,44 @@ const Picks = () => {
       .map((g) => g.raw.gameID)
       .filter((id): id is string => typeof id === "string" && id.length > 0)
       .filter((id) => !memCache.get(`odds:${id}`));
-    
+
     if (toFetch.length === 0) return;
 
     const processRequestsWithDelay = async () => {
-      const results: Array<{ gameId: string; res?: BettingOddsResponse | ApiWrapped<BettingOddsResponse> | undefined }> = [];
-      
+      const results: Array<{
+        gameId: string;
+        res?: BettingOddsResponse | ApiWrapped<BettingOddsResponse> | undefined;
+      }> = [];
+
       for (let i = 0; i < toFetch.length; i++) {
         if (!active) break;
-        
+
         const gameId = toFetch[i];
         try {
-          const res = await apiClient.get<BettingOddsResponse | ApiWrapped<BettingOddsResponse>>(
-            `betting-odds/${encodeURIComponent(gameId)}`,
-            {
-              signal: controller.signal,
-            }
-          );
+          const res = await apiClient.get<
+            BettingOddsResponse | ApiWrapped<BettingOddsResponse>
+          >(`betting-odds/${encodeURIComponent(gameId)}`, {
+            signal: controller.signal,
+          });
           results.push({ gameId, res });
         } catch {
           results.push({ gameId, res: undefined });
         }
-        
+
         if (i < toFetch.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 500));
         }
       }
-      
+
       if (!active) return;
-      
+
       setOddsByGameId((prev) => {
         const next = { ...prev };
         for (const { gameId, res } of results) {
           if (!res) continue;
-          const payload = res as BettingOddsResponse | ApiWrapped<BettingOddsResponse>;
+          const payload = res as
+            | BettingOddsResponse
+            | ApiWrapped<BettingOddsResponse>;
           let odds: BettingOddsResponse["odds"] | undefined;
           if (
             payload &&
@@ -322,40 +360,30 @@ const Picks = () => {
   }, [joinedCurrentWeekGames]);
 
   const handlePickChange = (gameId: string, team: string) => {
-    if (hasSubmitted) return;
-    setPicks((prev) => ({
-      ...prev,
-      [gameId]: team,
-    }));
+    if (!canEditPicks()) return;
+    setPicks((prev) => {
+      // If clicking the same team that's already selected, deselect it
+      if (prev[gameId] === team) {
+        const newPicks = { ...prev };
+        delete newPicks[gameId];
+        return newPicks;
+      }
+      // Otherwise, select the team
+      return {
+        ...prev,
+        [gameId]: team,
+      };
+    });
   };
 
   const handleTouchdownScorerSelect = (
     playerId: string,
     playerName: string
   ) => {
-    if (hasSubmitted) return;
+    if (!canEditPicks()) return;
     setTouchdownScorer(playerId);
     setPlayerSearchValue(playerName);
     setPlayerSearchOpen(false);
-  };
-
-  const parseGameDateTime = (gameDate: string, gameTime: string) => {
-    const yyyy = Number(gameDate.slice(0, 4));
-    const mm = Number(gameDate.slice(4, 6));
-    const dd = Number(gameDate.slice(6, 8));
-    const timeMatch = gameTime
-      .trim()
-      .match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
-    let hours = 12;
-    let minutes = 0;
-    if (timeMatch) {
-      hours = Number(timeMatch[1]);
-      minutes = timeMatch[2] ? Number(timeMatch[2]) : 0;
-      const meridiem = timeMatch[3].toLowerCase();
-      if (meridiem === "p" && hours !== 12) hours += 12;
-      if (meridiem === "a" && hours === 12) hours = 0;
-    }
-    return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
   };
 
   const formatGameTime = (gameDate: string, gameTime: string) => {
@@ -373,11 +401,46 @@ const Picks = () => {
     const gameDateTime = parseGameDateTime(gameDate, gameTime);
     const now = new Date();
     const bufferMinutes = 15;
-    const cutoffTime = new Date(gameDateTime.getTime() + (bufferMinutes * 60 * 1000));
+    const cutoffTime = new Date(
+      gameDateTime.getTime() + bufferMinutes * 60 * 1000
+    );
     return now > cutoffTime;
   };
 
-  const canSubmit = () => true;
+  const canEditGame = (gameDate: string, gameTime: string) => {
+    const gameDateTime = parseGameDateTime(gameDate, gameTime);
+    const now = new Date();
+    const lockoutMinutes = 10;
+    const lockoutTime = new Date(
+      gameDateTime.getTime() - lockoutMinutes * 60 * 1000
+    );
+    return now <= lockoutTime;
+  };
+
+  const canEditPicks = () => {
+    if (!selectedWeek || !games.length) return true;
+
+    const currentWeekGames = games.filter((g) => {
+      const weekNum = Number(g.gameWeek.match(/\d+/)?.[0] ?? NaN);
+      return !Number.isNaN(weekNum) && weekNum === selectedWeek;
+    });
+
+    if (currentWeekGames.length === 0) return true;
+
+    // Check if ALL games in the week have been completed
+    const allGamesCompleted = currentWeekGames.every((g) => {
+      return isGameStarted(g.gameDate as string, g.gameTime as string);
+    });
+
+    // If all games are completed, picks are locked
+    if (allGamesCompleted) return false;
+
+    // For individual games, check if they can still be edited (10 minutes before kickoff)
+    // This will be handled in the UI by disabling individual game buttons
+    return true;
+  };
+
+  const canSubmit = () => canEditPicks();
 
   const handleSubmit = async () => {
     const weekToSave = selectedWeek ?? currentWeek;
@@ -398,10 +461,21 @@ const Picks = () => {
       isFinalized: true,
     };
     console.log("[PICKS] Submitting payload:", payload);
+    console.log("[PICKS] Prop bet details:", { propBet, propBetOdds });
+    console.log("[PICKS] Prop bet validation:", {
+      propBetExists: !!propBet,
+      propBetLength: propBet?.length || 0,
+      propBetOddsExists: !!propBetOdds,
+      propBetOddsLength: propBetOdds?.length || 0,
+    });
 
     try {
       console.log("[PICKS] Making API call to picks endpoint");
-      const res = await apiClient.post<{ success?: boolean; data?: unknown; message?: string }>("picks", payload);
+      const res = await apiClient.post<{
+        success?: boolean;
+        data?: unknown;
+        message?: string;
+      }>("picks", payload);
       console.log("[PICKS] Submit response:", res);
       console.log("[PICKS] Response data type:", typeof res.data);
       console.log("[PICKS] Response data value:", res.data);
@@ -419,8 +493,14 @@ const Picks = () => {
       const message = err instanceof Error ? err.message : String(err);
       console.error("[PICKS] Submit failed:", message);
       try {
-        alert(`Submit failed: ${message}`);
-      } catch {/* noop */}
+        if (message.includes("locked for this week")) {
+          alert(`Picks are locked: ${message}`);
+        } else {
+          alert(`Submit failed: ${message}`);
+        }
+      } catch {
+        /* noop */
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -479,14 +559,31 @@ const Picks = () => {
           </h1>
           <div className="flex items-center gap-4 mt-1">
             <p className="text-muted-foreground">
-              Week {selectedWeek ?? "-"} • {joinedCurrentWeekGames.filter(g => !isGameStarted(g.gameDate, g.gameTime)).length} games
+              Week {selectedWeek ?? "-"} •{" "}
+              {
+                joinedCurrentWeekGames.filter((g) =>
+                  canEditGame(g.gameDate, g.gameTime)
+                ).length
+              }{" "}
+              games available
             </p>
+            {!canEditPicks() && (
+              <Badge variant="destructive" className="text-sm">
+                Picks Locked
+              </Badge>
+            )}
             {availableWeeks.length > 1 && (
               <div className="flex items-center gap-2">
-                <Label htmlFor="week-selector" className="text-sm text-muted-foreground">
+                <Label
+                  htmlFor="week-selector"
+                  className="text-sm text-muted-foreground"
+                >
                   Select Week:
                 </Label>
-                <Select value={selectedWeek?.toString() || ""} onValueChange={(value) => setSelectedWeek(Number(value))}>
+                <Select
+                  value={selectedWeek?.toString() || ""}
+                  onValueChange={(value) => setSelectedWeek(Number(value))}
+                >
                   <SelectTrigger className="w-24">
                     <SelectValue placeholder="Week" />
                   </SelectTrigger>
@@ -502,9 +599,14 @@ const Picks = () => {
             )}
           </div>
         </div>
-        {hasSubmitted && (
+        {hasSubmitted && canEditPicks() && (
           <Badge variant="default" className="text-sm">
-            Picks Submitted
+            Picks Submitted - Can Edit
+          </Badge>
+        )}
+        {hasSubmitted && !canEditPicks() && (
+          <Badge variant="destructive" className="text-sm">
+            Picks Locked
           </Badge>
         )}
       </div>
@@ -522,28 +624,38 @@ const Picks = () => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {joinedCurrentWeekGames
-              .filter((g) => !isGameStarted(g.gameDate, g.gameTime))
-              .map((game) => {
+            {joinedCurrentWeekGames.map((game) => {
               const gameStarted = isGameStarted(game.gameDate, game.gameTime);
+              const canEdit =
+                canEditPicks() && canEditGame(game.gameDate, game.gameTime);
 
               return (
                 <div
                   key={game.id}
                   className={`p-4 border rounded-lg transition-all duration-200 hover:shadow-md ${
-                    gameStarted || hasSubmitted ? "bg-muted/50 opacity-60" : "hover:border-primary/50"
+                    gameStarted || !canEdit
+                      ? "bg-muted/50 opacity-60"
+                      : "hover:border-primary/50"
                   }`}
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-sm text-muted-foreground">
                       {formatGameTime(game.gameDate, game.gameTime)}
-                      {gameStarted && (
+                      {gameStarted ? (
                         <Badge variant="secondary" className="ml-2 text-xs">
-                          Started
+                          Completed
+                        </Badge>
+                      ) : !canEdit ? (
+                        <Badge variant="destructive" className="ml-2 text-xs">
+                          Locked
+                        </Badge>
+                      ) : (
+                        <Badge variant="default" className="ml-2 text-xs">
+                          Available
                         </Badge>
                       )}
                     </div>
-                    {(gameStarted || hasSubmitted) && (
+                    {!canEdit && (
                       <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                     )}
                   </div>
@@ -597,7 +709,7 @@ const Picks = () => {
                           (game.awayTeam?.teamAbv as string) || ""
                         )
                       }
-                      disabled={gameStarted || hasSubmitted}
+                      disabled={gameStarted || !canEdit}
                       style={{
                         backgroundColor:
                           picks[game.id] === game.awayTeam?.teamAbv
@@ -610,7 +722,8 @@ const Picks = () => {
                       }}
                       onMouseEnter={(e) => {
                         if (
-                          !gameStarted && !hasSubmitted &&
+                          !gameStarted &&
+                          canEdit &&
                           picks[game.id] !== game.awayTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "#00000010";
@@ -618,7 +731,8 @@ const Picks = () => {
                       }}
                       onMouseLeave={(e) => {
                         if (
-                          !gameStarted && !hasSubmitted &&
+                          !gameStarted &&
+                          canEdit &&
                           picks[game.id] !== game.awayTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "";
@@ -637,7 +751,7 @@ const Picks = () => {
                           </div>
                           <div className="text-xs opacity-80">
                             {oddsByGameId[game.raw.gameID]?.awayTeamSpread ||
-                              "PK"}
+                              "LOADING ..."}
                           </div>
                         </div>
                       </div>
@@ -656,7 +770,7 @@ const Picks = () => {
                           (game.homeTeam?.teamAbv as string) || ""
                         )
                       }
-                      disabled={gameStarted || hasSubmitted}
+                      disabled={gameStarted || !canEdit}
                       style={{
                         backgroundColor:
                           picks[game.id] === game.homeTeam?.teamAbv
@@ -669,7 +783,8 @@ const Picks = () => {
                       }}
                       onMouseEnter={(e) => {
                         if (
-                          !gameStarted && !hasSubmitted &&
+                          !gameStarted &&
+                          canEdit &&
                           picks[game.id] !== game.homeTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "#00000010";
@@ -677,7 +792,8 @@ const Picks = () => {
                       }}
                       onMouseLeave={(e) => {
                         if (
-                          !gameStarted && !hasSubmitted &&
+                          !gameStarted &&
+                          canEdit &&
                           picks[game.id] !== game.homeTeam?.teamAbv
                         ) {
                           e.currentTarget.style.backgroundColor = "";
@@ -696,7 +812,7 @@ const Picks = () => {
                           </div>
                           <div className="text-xs opacity-80">
                             {oddsByGameId[game.raw.gameID]?.homeTeamSpread ||
-                              "PK"}
+                              "LOADING ..."}
                           </div>
                         </div>
                       </div>
@@ -722,9 +838,15 @@ const Picks = () => {
               Choose your most confident pick for double points
             </CardDescription>
           </CardHeader>
-          <CardContent className={hasSubmitted ? "opacity-60" : undefined}>
-            <Select value={lockOfWeek} onValueChange={(v) => { if (hasSubmitted) return; setLockOfWeek(v); }}>
-              <SelectTrigger disabled={hasSubmitted}>
+          <CardContent className={!canEditPicks() ? "opacity-60" : undefined}>
+            <Select
+              value={lockOfWeek}
+              onValueChange={(v) => {
+                if (!canEditPicks()) return;
+                setLockOfWeek(v);
+              }}
+            >
+              <SelectTrigger disabled={!canEditPicks()}>
                 <SelectValue placeholder="Select your lock of the week" />
               </SelectTrigger>
               <SelectContent>
@@ -738,7 +860,10 @@ const Picks = () => {
                       : game.homeTeam;
 
                   return (
-                    <SelectItem key={game.id} value={selectedTeam?.teamAbv || ""}>
+                    <SelectItem
+                      key={game.id}
+                      value={selectedTeam?.teamAbv || ""}
+                    >
                       <div className="flex items-center gap-2">
                         {selectedTeam?.espnLogo1 && (
                           <img
@@ -768,15 +893,21 @@ const Picks = () => {
               Pick a player to score a touchdown this week
             </CardDescription>
           </CardHeader>
-          <CardContent className={hasSubmitted ? "opacity-60" : undefined}>
-            <Popover open={playerSearchOpen} onOpenChange={(open) => { if (hasSubmitted) return; setPlayerSearchOpen(open); }}>
+          <CardContent className={!canEditPicks() ? "opacity-60" : undefined}>
+            <Popover
+              open={playerSearchOpen}
+              onOpenChange={(open) => {
+                if (!canEditPicks()) return;
+                setPlayerSearchOpen(open);
+              }}
+            >
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   role="combobox"
                   aria-expanded={playerSearchOpen}
                   className="w-full justify-between"
-                  disabled={hasSubmitted}
+                  disabled={!canEditPicks()}
                 >
                   {playerSearchValue || "Search for a player..."}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -855,7 +986,7 @@ const Picks = () => {
             Submit a prop bet for admin approval
           </CardDescription>
         </CardHeader>
-        <CardContent className={hasSubmitted ? "opacity-60" : undefined}>
+        <CardContent className={!canEditPicks() ? "opacity-60" : undefined}>
           <div className="space-y-2">
             <Label htmlFor="propBet">Prop Bet Description</Label>
             <Input
@@ -865,7 +996,7 @@ const Picks = () => {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 setPropBet(e.target.value)
               }
-              disabled={hasSubmitted}
+              disabled={!canEditPicks()}
             />
             <Label htmlFor="propBetOdds">Prop Bet Odds</Label>
             <Input
@@ -875,7 +1006,7 @@ const Picks = () => {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 setPropBetOdds(e.target.value)
               }
-              disabled={hasSubmitted}
+              disabled={!canEditPicks()}
             />
             <p className="text-xs text-muted-foreground">
               Describe your prop bet clearly and provide the odds (e.g., +190,
@@ -887,16 +1018,21 @@ const Picks = () => {
 
       {/* Action buttons */}
       <div className="flex gap-2 justify-end">
-        <Button onClick={handleSubmit} disabled={isSubmitting || hasSubmitted} size="lg" className="min-w-32">
+        <Button
+          onClick={handleSubmit}
+          disabled={isSubmitting || !canSubmit()}
+          size="lg"
+          className="min-w-32"
+        >
           {isSubmitting ? (
             <>
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-              Submitting...
+              {hasSubmitted ? "Updating..." : "Submitting..."}
             </>
           ) : (
             <>
               <Save className="mr-2 h-4 w-4" />
-              Submit Picks
+              {hasSubmitted ? "Update Picks" : "Submit Picks"}
             </>
           )}
         </Button>

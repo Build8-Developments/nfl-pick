@@ -64,7 +64,9 @@ const syncWeekGames = async (week?: number, season?: number) => {
       espnLink: normalizeString(raw.espnLink ?? raw.ESPNLink),
       cbsLink: normalizeString(raw.cbsLink ?? raw.CBSLink),
       gameTime: normalizeString(raw.gameTime ?? raw.GameTime),
-      gameTimeEpoch: normalizeString(raw.gameTimeEpoch ?? raw.GameTimeEpoch),
+      gameTimeEpoch: normalizeString(
+        raw.gameTime_epoch ?? raw.gameTimeEpoch ?? raw.GameTimeEpoch
+      ),
       season: normalizeString(raw.season ?? raw.Season ?? targetSeason),
       neutralSite: normalizeString(raw.neutralSite ?? raw.NeutralSite),
       gameStatusCode: normalizeString(raw.gameStatusCode ?? raw.GameStatusCode),
