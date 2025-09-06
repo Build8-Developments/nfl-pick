@@ -11,7 +11,6 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { apiOrigin } from "../lib/api";
 
 const Layout = () => {
   const { currentUser, logout } = useAuth();
