@@ -41,6 +41,7 @@ import {
   ChevronsUpDown,
   AlertTriangle,
   Save,
+  X,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import type { IPlayer } from "@/types/player.type";
@@ -136,7 +137,7 @@ const Picks = () => {
   useEffect(() => {
     if (!currentUser) return;
     let active = true;
-    
+
     apiClient
       .get<{
         success: boolean;
@@ -152,7 +153,7 @@ const Picks = () => {
         console.error("[PICKS] Error loading used TD scorers:", err);
         setUsedTdScorers([]);
       });
-    
+
     return () => {
       active = false;
     };
@@ -413,7 +414,9 @@ const Picks = () => {
   ) => {
     if (!canEditPicks()) return;
     if (usedTdScorers.includes(playerId)) {
-      alert(`You have already used ${playerName} as a TD scorer this season. Each player can only be selected once per season.`);
+      alert(
+        `You have already used ${playerName} as a TD scorer this season. Each player can only be selected once per season.`
+      );
       return;
     }
     setTouchdownScorer(playerId);
@@ -959,19 +962,26 @@ const Picks = () => {
                     <CommandEmpty>No players found.</CommandEmpty>
                     <CommandGroup>
                       {players.slice(0, 20).map((player) => {
-                        const isUsed = usedTdScorers.includes(String(player.playerID));
-                        const isSelected = touchdownScorer === String(player.playerID);
-                        
+                        const isUsed = usedTdScorers.includes(
+                          String(player.playerID)
+                        );
+                        const isSelected =
+                          touchdownScorer === String(player.playerID);
+
                         return (
                           <CommandItem
                             key={player.playerID}
                             value={player.longName}
                             className={`flex justify-between items-center ${
-                              isUsed && !isSelected ? "opacity-50 cursor-not-allowed" : ""
+                              isUsed && !isSelected
+                                ? "opacity-50 cursor-not-allowed"
+                                : ""
                             }`}
                             onSelect={() => {
                               if (isUsed && !isSelected) {
-                                alert(`You have already used ${player.longName} as a TD scorer this season. Each player can only be selected once per season.`);
+                                alert(
+                                  `You have already used ${player.longName} as a TD scorer this season. Each player can only be selected once per season.`
+                                );
                                 return;
                               }
                               handleTouchdownScorerSelect(
@@ -996,7 +1006,11 @@ const Picks = () => {
                                   />
                                 )}
 
-                                <span className={`text-sm w-full ${isUsed && !isSelected ? "line-through" : ""}`}>
+                                <span
+                                  className={`text-sm w-full ${
+                                    isUsed && !isSelected ? "line-through" : ""
+                                  }`}
+                                >
                                   {player.longName}
                                   {isUsed && !isSelected && (
                                     <span className="text-xs text-muted-foreground ml-2">
@@ -1037,33 +1051,46 @@ const Picks = () => {
         <CardContent className={!canEditPicks() ? "opacity-60" : undefined}>
           {/* Prop Bet Status Indicator */}
           {propBet && propBetStatus && (
-            <div className={`mb-4 p-3 rounded-lg border ${
-              propBetStatus === 'approved' ? 'bg-green-50 border-green-200' :
-              propBetStatus === 'rejected' ? 'bg-red-50 border-red-200' :
-              'bg-yellow-50 border-yellow-200'
-            }`}>
+            <div
+              className={`mb-4 p-3 rounded-lg border ${
+                propBetStatus === "approved"
+                  ? "bg-green-50 border-green-200"
+                  : propBetStatus === "rejected"
+                  ? "bg-red-50 border-red-200"
+                  : "bg-yellow-50 border-yellow-200"
+              }`}
+            >
               <div className="flex items-center gap-2">
-                {propBetStatus === 'approved' ? (
+                {propBetStatus === "approved" ? (
                   <>
                     <Check className="h-5 w-5 text-green-600" />
-                    <span className="font-medium text-green-800">Prop Bet Approved!</span>
+                    <span className="font-medium text-green-800">
+                      Prop Bet Approved!
+                    </span>
                   </>
-                ) : propBetStatus === 'rejected' ? (
+                ) : propBetStatus === "rejected" ? (
                   <>
                     <X className="h-5 w-5 text-red-600" />
-                    <span className="font-medium text-red-800">Prop Bet Rejected</span>
+                    <span className="font-medium text-red-800">
+                      Prop Bet Rejected
+                    </span>
                   </>
                 ) : (
                   <>
                     <Clock className="h-5 w-5 text-yellow-600" />
-                    <span className="font-medium text-yellow-800">Prop Bet Pending Approval</span>
+                    <span className="font-medium text-yellow-800">
+                      Prop Bet Pending Approval
+                    </span>
                   </>
                 )}
               </div>
               <p className="text-sm mt-1 text-muted-foreground">
-                "{propBet}" {propBetStatus === 'pending' ? 'is waiting for admin review' : 
-                propBetStatus === 'approved' ? 'has been approved and is now live' : 
-                'was rejected by admin'}
+                "{propBet}"{" "}
+                {propBetStatus === "pending"
+                  ? "is waiting for admin review"
+                  : propBetStatus === "approved"
+                  ? "has been approved and is now live"
+                  : "was rejected by admin"}
               </p>
             </div>
           )}
@@ -1091,7 +1118,8 @@ const Picks = () => {
             />
             <p className="text-xs text-muted-foreground">
               Describe your prop bet clearly and provide the odds (e.g., +190,
-              -150). Your prop bet will be reviewed by an admin before going live.
+              -150). Your prop bet will be reviewed by an admin before going
+              live.
             </p>
           </div>
         </CardContent>
