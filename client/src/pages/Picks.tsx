@@ -494,7 +494,7 @@ const Picks = () => {
     };
 
     try {
-      const res = await apiClient.post<{
+      await apiClient.post<{
         success?: boolean;
         data?: unknown;
         message?: string;
@@ -953,9 +953,7 @@ const Picks = () => {
                             key={player.playerID}
                             value={player.longName}
                             className={`flex justify-between items-center ${
-                              isUsed && !isSelected
-                                ? "opacity-75"
-                                : ""
+                              isUsed && !isSelected ? "opacity-75" : ""
                             }`}
                             onSelect={() => {
                               // Allow re-selecting the same player for the same week
