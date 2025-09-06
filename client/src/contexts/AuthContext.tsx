@@ -40,9 +40,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setCurrentUser(null);
         }
       } catch (error) {
-        // Only log errors that are not 401 (unauthorized) to avoid spam
-        if (error instanceof Error && !error.message.includes('401')) {
-          console.error("Session validation failed:", error);
+        // Only log errors that are not authentication-related to avoid spam
+        if (error instanceof Error) {
+          const isAuthError = error.message.includes('401') || 
+                             error.message.includes('Not authenticated') ||
+                             error.message.includes('Unauthorized');
+          
+          if (!isAuthError) {
+            console.error("Session validation failed:", error);
+          }
         }
         setCurrentUser(null);
       } finally {

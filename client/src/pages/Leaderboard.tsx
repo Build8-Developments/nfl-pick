@@ -21,6 +21,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
+import { computeAvatarUrl } from "@/lib/avatarUtils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Select,
@@ -214,11 +215,7 @@ const Leaderboard = () => {
   // Helper function to get user avatar
   const getUserAvatar = (avatar?: string) => {
     if (avatar) {
-      // Handle both relative and absolute URLs
-      if (avatar.startsWith("http")) {
-        return avatar;
-      }
-      return `http://localhost:3000${avatar}`;
+      return computeAvatarUrl(avatar);
     }
     // Fallback to default avatar
     return "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face";

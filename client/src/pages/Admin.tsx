@@ -74,6 +74,8 @@ const Admin = () => {
       gameTime: string;
       teamIDHome: string;
       teamIDAway: string;
+      gameStatus?: string;
+      gameStatusCode?: string;
     }>
   >([]);
   // Removed unused loading states
@@ -185,6 +187,8 @@ const Admin = () => {
             gameTime: string;
             teamIDHome: string;
             teamIDAway: string;
+            gameStatus?: string;
+            gameStatusCode?: string;
           }>
         >
       >("games");
@@ -367,16 +371,36 @@ const Admin = () => {
     }
   };
 
-  const getGameStatus = (gameTime: string) => {
-    const now = new Date();
-    const gameDate = new Date(gameTime);
+  const getGameStatus = (game: { gameTime: string; gameStatus?: string; gameStatusCode?: string }) => {
+    // If we have real game status from the API, use it
+    if (game.gameStatus) {
+      const status = game.gameStatus.toLowerCase();
+      if (status.includes('final') || status.includes('completed') || status.includes('finished')) {
+        return "completed";
+      }
+      if (status.includes('in_progress') || status.includes('live') || status.includes('active')) {
+        return "in_progress";
+      }
+      if (status.includes('scheduled') || status.includes('upcoming') || status.includes('pre')) {
+        return "scheduled";
+      }
+    }
 
+    // Fallback to time-based logic if no game status available
+    const now = new Date();
+    const gameDate = new Date(game.gameTime);
+
+    // If game is in the future, it's scheduled
     if (gameDate > now) return "scheduled";
-    if (
-      gameDate <= now &&
-      gameDate > new Date(now.getTime() - 3 * 60 * 60 * 1000)
-    )
+    
+    // If game started within the last 4 hours, it might be in progress
+    // NFL games typically last 3-4 hours including overtime
+    const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+    if (gameDate > fourHoursAgo) {
       return "in_progress";
+    }
+    
+    // If game started more than 4 hours ago, it's completed
     return "completed";
   };
 
@@ -387,11 +411,11 @@ const Admin = () => {
         : games.filter((g) => g.gameWeek === selectedWeek).length,
     completedGames:
       selectedWeek === "all"
-        ? games.filter((g) => getGameStatus(g.gameTime) === "completed").length
+        ? games.filter((g) => getGameStatus(g) === "completed").length
         : games.filter(
             (g) =>
               g.gameWeek === selectedWeek &&
-              getGameStatus(g.gameTime) === "completed"
+              getGameStatus(g) === "completed"
           ).length,
     submittedPicks: submittedPicksCount,
     pendingProps: propBets.filter((p) => p.status === "pending").length,
@@ -590,6 +614,14 @@ const Admin = () => {
                 Available weeks: {availableWeeks.join(", ")}
                 <br />
                 Users count: {users.length}
+                <br />
+                <strong>Game Status Debug:</strong>
+                <br />
+                Total games: {games.length}
+                <br />
+                Completed games: {currentWeekStats.completedGames}
+                <br />
+                Sample game statuses: {games.slice(0, 3).map(g => `${g.gameID}: ${g.gameStatus || 'no status'}`).join(', ')}
               </div>
 
               {isLoadingPropBets ? (

@@ -13,6 +13,8 @@ import {
   debugAllPicks,
   createTestPropBet,
   debugPropBetStatus,
+  debugAllPicksSimple,
+  testDatabaseConnection,
   getUsedTdScorers,
 } from "./pick.controller.js";
 import { rateLimit } from "../../middlewares/rateLimit.middleware.js";
@@ -58,5 +60,11 @@ pickRouter.post("/test-prop-bet", protectAdmin, asyncHandler(createTestPropBet))
 
 // Debug route (admin only)
 pickRouter.get("/debug-prop-bet-status", protectAdmin, asyncHandler(debugPropBetStatus));
+
+// Debug route (admin only) - simple all picks
+pickRouter.get("/debug-all-picks", protectAdmin, asyncHandler(debugAllPicksSimple));
+
+// Test route (no auth required) - test database connection
+pickRouter.get("/test-db", asyncHandler(testDatabaseConnection));
 
 export default pickRouter;

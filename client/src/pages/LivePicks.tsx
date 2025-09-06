@@ -30,6 +30,7 @@ import {
   Clock,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
+import { computeAvatarUrl } from "@/lib/avatarUtils";
 import type { ITeam } from "@/types/team.type";
 import type { IPlayer } from "@/types/player.type";
 import type { IGame } from "@/types/game.type";
@@ -596,8 +597,7 @@ const LivePicks = () => {
     (userName: string) => {
       const user = users.find((u) => u.username === userName);
       if (user && user.avatar) {
-        // Construct the full URL for the avatar
-        return `http://localhost:3000${user.avatar}`;
+        return computeAvatarUrl(user.avatar);
       }
 
       // Fallback to default avatar if user not found or no avatar
@@ -760,8 +760,15 @@ const LivePicks = () => {
       );
       const userId =
         typeof p.user === "string" ? p.user : p.user?._id || "unknown";
-      const userName =
-        typeof p.user === "string" ? "User" : p.user?.username || "User";
+      const userName = (() => {
+        if (typeof p.user === "string") {
+          // If user is just an ID string, try to find the user in our users list
+          const foundUser = users.find((u) => u._id === p.user);
+          return foundUser?.username || "User";
+        } else {
+          return p.user?.username || "User";
+        }
+      })();
       const userAvatar = (() => {
         if (typeof p.user === "string") {
           // If user is just an ID string, try to find the user in our users list
@@ -1352,17 +1359,6 @@ const LivePicks = () => {
             );
           });
 
-          // Debug logging
-          console.log("[LIVE PICKS] Prop bet debug:", {
-            totalUsers: transformedPicks.length,
-            usersWithApprovedProps: usersWithApprovedProps.length,
-            currentUserPendingProp: !!currentUserPendingProp,
-            allPropBets: transformedPicks.map((u) => ({
-              user: u.userName,
-              propBet: u.propBet.description,
-              status: u.propBet.status,
-            })),
-          });
 
           return (
             <Card>
