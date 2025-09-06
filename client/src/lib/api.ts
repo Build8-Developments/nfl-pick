@@ -16,7 +16,7 @@ export type ApiRequestOptions = {
   signal?: AbortSignal;
 };
 
-const resolveBaseUrl = (override?: string) => {
+export const resolveBaseUrl = (override?: string) => {
   if (override) return ensureTrailingSlash(override);
   const env = import.meta.env.MODE || process.env.NODE_ENV || "development";
   // Use Vite proxy in development, direct URL in production
@@ -172,7 +172,7 @@ export const apiClient = new ApiClient({
 export const apiOrigin: string = (() => {
   const baseUrl = resolveBaseUrl();
   // If it's a relative URL (starts with /), use window.location.origin
-  if (baseUrl.startsWith('/')) {
+  if (baseUrl.startsWith("/")) {
     return window.location.origin;
   }
   // If it's an absolute URL, extract the origin

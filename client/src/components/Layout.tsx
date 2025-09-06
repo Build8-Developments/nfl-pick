@@ -11,7 +11,10 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
+<<<<<<< HEAD
 import { computeAvatarUrl } from "../lib/avatarUtils";
+=======
+>>>>>>> 79803ac872864f6a30479675ccade827186523b1
 
 const Layout = () => {
   const { currentUser, logout } = useAuth();
@@ -40,8 +43,31 @@ const Layout = () => {
     }
     return location.pathname.startsWith(href);
   };
+  const apiOrigin =
+    import.meta.env.MODE === "development"
+      ? "http://localhost:3000"
+      : "https://api.blockhaven.net";
 
+<<<<<<< HEAD
+=======
+  const computeAvatarUrl = (raw?: string) => {
+    const placeholder = "https://placehold.co/64x64";
+    if (!raw) return placeholder;
+
+    // If already absolute, return as-is
+    if (/^https?:\/\//i.test(raw)) return raw;
+
+    // Normalize leading slashes
+    const normalized = raw.replace(/^\/+/, "");
+
+    // Always prepend apiOrigin
+    return `${apiOrigin}/${normalized}`;
+  };
+
+>>>>>>> 79803ac872864f6a30479675ccade827186523b1
   const avatarUrl = computeAvatarUrl(currentUser?.avatar);
+
+  console.log(avatarUrl);
 
   return (
     <div className="min-h-screen bg-background">
@@ -124,7 +150,9 @@ const Layout = () => {
                   <p className="text-muted-foreground">
                     {currentUser?.seasonRecord.wins}-
                     {currentUser?.seasonRecord.losses}(
-                    {(currentUser?.seasonRecord.percentage ?? 0 * 100).toFixed(1)}
+                    {(currentUser?.seasonRecord.percentage ?? 0 * 100).toFixed(
+                      1
+                    )}
                     %)
                   </p>
                 </div>
