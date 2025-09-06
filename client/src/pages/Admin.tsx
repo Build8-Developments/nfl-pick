@@ -31,7 +31,7 @@ import {
   Users,
 } from "lucide-react";
 // Removed mock data import - using real API data
-import { apiClient, apiOrigin } from "../lib/api";
+import { apiClient, resolveBaseUrl } from "../lib/api";
 
 type ApiSuccess<T> = { success: true; data: T; message?: string };
 
@@ -50,7 +50,7 @@ const Admin = () => {
   const [propBets, setPropBets] = useState<
     Array<{
       _id: string;
-      user: { _id: string; username: string; avatar?: string };
+      user: ApiUser;
       week: number;
       propBet: string;
       propBetOdds?: string;
@@ -127,7 +127,7 @@ const Admin = () => {
         ApiSuccess<
           Array<{
             _id: string;
-            user: { _id: string; username: string; avatar?: string };
+            user: ApiUser;
             week: number;
             propBet: string;
             propBetOdds?: string;
@@ -397,6 +397,14 @@ const Admin = () => {
     pendingProps: propBets.filter((p) => p.status === "pending").length,
     approvedProps: propBets.filter((p) => p.status === "approved").length,
     rejectedProps: propBets.filter((p) => p.status === "rejected").length,
+  };
+
+  const buildUrl = (path: string) => {
+    const base = resolveBaseUrl();
+    return `${import.meta.env.VITE_API_ORIGIN}${base}${path.replace(
+      /^\/+/,
+      ""
+    )}`;
   };
 
   return (
@@ -912,16 +920,8 @@ const Admin = () => {
                         <tr key={u._id} className="border-b">
                           <td className="py-2 pr-4">
                             <img
-                              src={
-                                u.avatar
-                                  ? u.avatar.startsWith("/uploads")
-                                    ? `${apiOrigin}${u.avatar}`
-                                    : u.avatar.startsWith("uploads/")
-                                    ? `${apiOrigin}/${u.avatar}`
-                                    : u.avatar
-                                  : "https://placehold.co/40x40"
-                              }
-                              alt="avatar"
+                              src={buildUrl(u.avatar!)}
+                              alt={u.username + "'s avatar"}
                               className="h-8 w-8 rounded-full object-cover border"
                             />
                           </td>

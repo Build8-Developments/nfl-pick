@@ -40,17 +40,28 @@ const Layout = () => {
     }
     return location.pathname.startsWith(href);
   };
+  const apiOrigin =
+    import.meta.env.MODE === "development"
+      ? "http://localhost:3000"
+      : "https://api.blockhaven.net";
 
   const computeAvatarUrl = (raw?: string) => {
     const placeholder = "https://placehold.co/64x64";
     if (!raw) return placeholder;
-    if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
-    if (raw.startsWith("/uploads")) return `${apiOrigin}${raw}`;
-    if (raw.startsWith("uploads/")) return `${apiOrigin}/${raw}`;
-    return raw;
+
+    // If already absolute, return as-is
+    if (/^https?:\/\//i.test(raw)) return raw;
+
+    // Normalize leading slashes
+    const normalized = raw.replace(/^\/+/, "");
+
+    // Always prepend apiOrigin
+    return `${apiOrigin}/${normalized}`;
   };
 
   const avatarUrl = computeAvatarUrl(currentUser?.avatar);
+
+  console.log(avatarUrl);
 
   return (
     <div className="min-h-screen bg-background">
@@ -133,7 +144,9 @@ const Layout = () => {
                   <p className="text-muted-foreground">
                     {currentUser?.seasonRecord.wins}-
                     {currentUser?.seasonRecord.losses}(
-                    {(currentUser?.seasonRecord.percentage ?? 0 * 100).toFixed(1)}
+                    {(currentUser?.seasonRecord.percentage ?? 0 * 100).toFixed(
+                      1
+                    )}
                     %)
                   </p>
                 </div>
