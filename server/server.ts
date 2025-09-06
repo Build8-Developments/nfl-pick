@@ -66,9 +66,9 @@ server.use(
 server.use((req, res, next) => {
   console.log("Request session debug:", {
     hasSession: !!req.session,
-    sessionId: req.sessionID,
+    sessionId: req.session.id,
     sessionKeys: req.session ? Object.keys(req.session) : [],
-    cookies: req.headers.cookie
+    cookies: req.headers.cookie,
   });
   next();
 });
@@ -83,12 +83,7 @@ server.use(
 server.use(
   cors({
     // Allow specific origins for development
-    origin: [
-      "http://localhost:5173", // Vite dev server
-      "http://localhost:3000", // Backend server
-      "http://127.0.0.1:5173",
-      "http://127.0.0.1:3000",
-    ],
+    origin: "*",
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Last-Event-ID"],

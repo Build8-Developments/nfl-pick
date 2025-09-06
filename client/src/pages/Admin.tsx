@@ -20,7 +20,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle, XCircle, Save, AlertTriangle, Clock, Trophy, Target, Users } from "lucide-react";
+import {
+  CheckCircle,
+  XCircle,
+  Save,
+  AlertTriangle,
+  Clock,
+  Trophy,
+  Target,
+  Users,
+} from "lucide-react";
 // Removed mock data import - using real API data
 import { apiClient, apiOrigin } from "../lib/api";
 
@@ -38,29 +47,35 @@ const Admin = () => {
   const { currentUser } = useAuth();
 
   // Prop Bet Management
-  const [propBets, setPropBets] = useState<Array<{
-    _id: string;
-    user: { _id: string; username: string; avatar?: string };
-    week: number;
-    propBet: string;
-    propBetOdds?: string;
-    status: 'pending' | 'approved' | 'rejected';
-    submittedAt: string;
-  }>>([]);
-  const [propBetActions, setPropBetActions] = useState<Record<string, string>>({});
+  const [propBets, setPropBets] = useState<
+    Array<{
+      _id: string;
+      user: { _id: string; username: string; avatar?: string };
+      week: number;
+      propBet: string;
+      propBetOdds?: string;
+      status: "pending" | "approved" | "rejected";
+      submittedAt: string;
+    }>
+  >([]);
+  const [propBetActions, setPropBetActions] = useState<Record<string, string>>(
+    {}
+  );
   const [isUpdating, setIsUpdating] = useState(false);
   const [selectedWeek, setSelectedWeek] = useState<string>("all");
   const [isLoadingPropBets, setIsLoadingPropBets] = useState(false);
 
   // Games data state
-  const [games, setGames] = useState<Array<{
-    gameID: string;
-    gameWeek: string;
-    gameDate: string;
-    gameTime: string;
-    teamIDHome: string;
-    teamIDAway: string;
-  }>>([]);
+  const [games, setGames] = useState<
+    Array<{
+      gameID: string;
+      gameWeek: string;
+      gameDate: string;
+      gameTime: string;
+      teamIDHome: string;
+      teamIDAway: string;
+    }>
+  >([]);
   // Removed unused loading states
 
   // Users list state
@@ -78,7 +93,9 @@ const Admin = () => {
   const [newRole, setNewRole] = useState<"user" | "admin">("user");
   const [newAvatarFile, setNewAvatarFile] = useState<File | null>(null);
   const [createUserError, setCreateUserError] = useState<string | null>(null);
-  const [createUserSuccess, setCreateUserSuccess] = useState<string | null>(null);
+  const [createUserSuccess, setCreateUserSuccess] = useState<string | null>(
+    null
+  );
   const [isCreatingUser, setIsCreatingUser] = useState(false);
 
   // Edit User state
@@ -106,15 +123,19 @@ const Admin = () => {
     try {
       setIsLoadingPropBets(true);
       console.log("[ADMIN] Fetching prop bets...");
-      const res = await apiClient.get<ApiSuccess<Array<{
-        _id: string;
-        user: { _id: string; username: string; avatar?: string };
-        week: number;
-        propBet: string;
-        propBetOdds?: string;
-        status: 'pending' | 'approved' | 'rejected';
-        submittedAt: string;
-      }>>>("picks/prop-bets");
+      const res = await apiClient.get<
+        ApiSuccess<
+          Array<{
+            _id: string;
+            user: { _id: string; username: string; avatar?: string };
+            week: number;
+            propBet: string;
+            propBetOdds?: string;
+            status: "pending" | "approved" | "rejected";
+            submittedAt: string;
+          }>
+        >
+      >("picks/prop-bets");
       console.log("[ADMIN] Prop bets response:", res);
       console.log("[ADMIN] Prop bets data:", res.data);
       setPropBets(res.data ?? []);
@@ -133,30 +154,40 @@ const Admin = () => {
 
   // Get unique weeks from prop bets
   const availableWeeks = useMemo(() => {
-    const weeks = propBets.map(pb => pb.week).filter((week, index, arr) => arr.indexOf(week) === index);
+    const weeks = propBets
+      .map((pb) => pb.week)
+      .filter((week, index, arr) => arr.indexOf(week) === index);
     return weeks.sort((a, b) => a - b);
   }, [propBets]);
 
   // Filter prop bets based on selected user, week, and status
   const filteredPropBets = useMemo(() => {
-    return propBets.filter(propBet => {
-      const userMatch = selectedUser === "all" || propBet.user._id === selectedUser;
-      const weekMatch = selectedPropWeek === "all" || propBet.week.toString() === selectedPropWeek;
-      const statusMatch = selectedStatus === "all" || propBet.status === selectedStatus;
+    return propBets.filter((propBet) => {
+      const userMatch =
+        selectedUser === "all" || propBet.user._id === selectedUser;
+      const weekMatch =
+        selectedPropWeek === "all" ||
+        propBet.week.toString() === selectedPropWeek;
+      const statusMatch =
+        selectedStatus === "all" || propBet.status === selectedStatus;
       return userMatch && weekMatch && statusMatch;
     });
   }, [propBets, selectedUser, selectedPropWeek, selectedStatus]);
 
   const fetchGames = async () => {
     try {
-      const res = await apiClient.get<ApiSuccess<Array<{
-        gameID: string;
-        gameWeek: string;
-        gameDate: string;
-        gameTime: string;
-        teamIDHome: string;
-        teamIDAway: string;
-      }>>>("games");
+      const res = await apiClient.get<
+        ApiSuccess<
+          Array<{
+            gameID: string;
+            gameWeek: string;
+            gameDate: string;
+            gameTime: string;
+            teamIDHome: string;
+            teamIDAway: string;
+          }>
+        >
+      >("games");
       setGames(res.data ?? []);
     } catch (err) {
       console.error("Failed to load games:", err);
@@ -166,22 +197,28 @@ const Admin = () => {
 
   // Get available weeks from games
   const availableGameWeeks = useMemo(() => {
-    const weeks = games.map(g => {
-      const weekMatch = g.gameWeek.match(/\d+/);
-      return weekMatch ? parseInt(weekMatch[0]) : null;
-    }).filter((week): week is number => week !== null);
+    const weeks = games
+      .map((g) => {
+        const weekMatch = g.gameWeek.match(/\d+/);
+        return weekMatch ? parseInt(weekMatch[0]) : null;
+      })
+      .filter((week): week is number => week !== null);
     return [...new Set(weeks)].sort((a, b) => a - b);
   }, [games]);
 
   const fetchSubmittedPicksCount = useCallback(async () => {
     try {
-      const res = await apiClient.get<ApiSuccess<Array<{
-        _id: string;
-        user: string;
-        week: number;
-        isFinalized: boolean;
-      }>>>(`picks/all/${selectedWeek}`);
-      const finalizedPicks = res.data?.filter(pick => pick.isFinalized) || [];
+      const res = await apiClient.get<
+        ApiSuccess<
+          Array<{
+            _id: string;
+            user: string;
+            week: number;
+            isFinalized: boolean;
+          }>
+        >
+      >(`picks/all/${selectedWeek}`);
+      const finalizedPicks = res.data?.filter((pick) => pick.isFinalized) || [];
       setSubmittedPicksCount(finalizedPicks.length);
     } catch (err) {
       console.error("Error fetching submitted picks count:", err);
@@ -232,7 +269,8 @@ const Admin = () => {
         fetchUsers();
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to create user";
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to create user";
       setCreateUserError(errorMessage);
     } finally {
       setIsCreatingUser(false);
@@ -257,8 +295,15 @@ const Admin = () => {
     if (!editingUserId) return;
     try {
       setIsSavingEdit(true);
-      const body = { username: editUsername, email: editEmail || undefined, role: editRole };
-      await apiClient.patch<ApiSuccess<ApiUser>>(`users/${editingUserId}`, body);
+      const body = {
+        username: editUsername,
+        email: editEmail || undefined,
+        role: editRole,
+      };
+      await apiClient.patch<ApiSuccess<ApiUser>>(
+        `users/${editingUserId}`,
+        body
+      );
       setEditingUserId(null);
       fetchUsers();
     } catch (err) {
@@ -306,9 +351,12 @@ const Admin = () => {
     try {
       const actions = Object.entries(propBetActions);
       for (const [propBetId, action] of actions) {
-        await apiClient.patch<ApiSuccess<unknown>>(`picks/prop-bets/${propBetId}`, {
-          status: action
-        });
+        await apiClient.patch<ApiSuccess<unknown>>(
+          `picks/prop-bets/${propBetId}`,
+          {
+            status: action,
+          }
+        );
       }
       setPropBetActions({});
       fetchPropBets(); // Refresh the list
@@ -333,14 +381,18 @@ const Admin = () => {
   };
 
   const currentWeekStats = {
-    totalGames: selectedWeek === "all" 
-      ? games.length 
-      : games.filter(g => g.gameWeek === selectedWeek).length,
-    completedGames: selectedWeek === "all"
-      ? games.filter(g => getGameStatus(g.gameTime) === "completed").length
-      : games.filter(g => 
-          g.gameWeek === selectedWeek && getGameStatus(g.gameTime) === "completed"
-        ).length,
+    totalGames:
+      selectedWeek === "all"
+        ? games.length
+        : games.filter((g) => g.gameWeek === selectedWeek).length,
+    completedGames:
+      selectedWeek === "all"
+        ? games.filter((g) => getGameStatus(g.gameTime) === "completed").length
+        : games.filter(
+            (g) =>
+              g.gameWeek === selectedWeek &&
+              getGameStatus(g.gameTime) === "completed"
+          ).length,
     submittedPicks: submittedPicksCount,
     pendingProps: propBets.filter((p) => p.status === "pending").length,
     approvedProps: propBets.filter((p) => p.status === "approved").length,
@@ -358,7 +410,10 @@ const Admin = () => {
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <Label htmlFor="week-selector" className="text-sm text-muted-foreground">
+          <Label
+            htmlFor="week-selector"
+            className="text-sm text-muted-foreground"
+          >
             View Week:
           </Label>
           <Select value={selectedWeek} onValueChange={setSelectedWeek}>
@@ -367,7 +422,7 @@ const Admin = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Weeks</SelectItem>
-              {availableGameWeeks.map(week => (
+              {availableGameWeeks.map((week) => (
                 <SelectItem key={week} value={week.toString()}>
                   Week {week}
                 </SelectItem>
@@ -382,7 +437,9 @@ const Admin = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              {selectedWeek === "all" ? "All Games" : `Week ${selectedWeek} Games`}
+              {selectedWeek === "all"
+                ? "All Games"
+                : `Week ${selectedWeek} Games`}
             </CardTitle>
             <Trophy className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -411,7 +468,9 @@ const Admin = () => {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Prop Bet Queue</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Prop Bet Queue
+            </CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -419,7 +478,8 @@ const Admin = () => {
               {currentWeekStats.pendingProps}
             </div>
             <p className="text-xs text-muted-foreground">
-              pending • {currentWeekStats.approvedProps} approved • {currentWeekStats.rejectedProps} rejected
+              pending • {currentWeekStats.approvedProps} approved •{" "}
+              {currentWeekStats.rejectedProps} rejected
             </p>
           </CardContent>
         </Card>
@@ -465,7 +525,7 @@ const Admin = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Users</SelectItem>
-                      {users.map(user => (
+                      {users.map((user) => (
                         <SelectItem key={user._id} value={user._id}>
                           {user.username}
                         </SelectItem>
@@ -475,13 +535,16 @@ const Admin = () => {
                 </div>
                 <div className="flex-1">
                   <Label htmlFor="week-filter">Filter by Week</Label>
-                  <Select value={selectedPropWeek} onValueChange={setSelectedPropWeek}>
+                  <Select
+                    value={selectedPropWeek}
+                    onValueChange={setSelectedPropWeek}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="All Weeks" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Weeks</SelectItem>
-                      {availableWeeks.map(week => (
+                      {availableWeeks.map((week) => (
                         <SelectItem key={week} value={week.toString()}>
                           Week {week}
                         </SelectItem>
@@ -491,7 +554,10 @@ const Admin = () => {
                 </div>
                 <div className="flex-1">
                   <Label htmlFor="status-filter">Filter by Status</Label>
-                  <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                  <Select
+                    value={selectedStatus}
+                    onValueChange={setSelectedStatus}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="All Statuses" />
                     </SelectTrigger>
@@ -504,18 +570,25 @@ const Admin = () => {
                   </Select>
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  Showing {filteredPropBets.length} of {propBets.length} prop bets
+                  Showing {filteredPropBets.length} of {propBets.length} prop
+                  bets
                 </div>
               </div>
 
               {/* Debug Information */}
               <div className="mb-4 p-3 bg-gray-100 rounded text-xs">
-                <strong>Debug Info:</strong><br/>
-                Total prop bets: {propBets.length}<br/>
-                Filtered prop bets: {filteredPropBets.length}<br/>
-                Selected user: {selectedUser}<br/>
-                Selected week: {selectedPropWeek}<br/>
-                Available weeks: {availableWeeks.join(', ')}<br/>
+                <strong>Debug Info:</strong>
+                <br />
+                Total prop bets: {propBets.length}
+                <br />
+                Filtered prop bets: {filteredPropBets.length}
+                <br />
+                Selected user: {selectedUser}
+                <br />
+                Selected week: {selectedPropWeek}
+                <br />
+                Available weeks: {availableWeeks.join(", ")}
+                <br />
                 Users count: {users.length}
               </div>
 
@@ -529,7 +602,9 @@ const Admin = () => {
                   {filteredPropBets.length === 0 ? (
                     <div className="text-center py-8">
                       <p className="text-gray-600">
-                        {propBets.length === 0 ? "No prop bets found" : "No prop bets match the selected filters"}
+                        {propBets.length === 0
+                          ? "No prop bets found"
+                          : "No prop bets match the selected filters"}
                       </p>
                     </div>
                   ) : (
@@ -537,11 +612,16 @@ const Admin = () => {
                       const action = propBetActions[propBet._id];
 
                       return (
-                        <div key={propBet._id} className={`p-4 border rounded-lg ${
-                          propBet.status === 'pending' ? 'border-yellow-200 bg-yellow-50' : 
-                          propBet.status === 'approved' ? 'border-green-200 bg-green-50' : 
-                          'border-red-200 bg-red-50'
-                        }`}>
+                        <div
+                          key={propBet._id}
+                          className={`p-4 border rounded-lg ${
+                            propBet.status === "pending"
+                              ? "border-yellow-200 bg-yellow-50"
+                              : propBet.status === "approved"
+                              ? "border-green-200 bg-green-50"
+                              : "border-red-200 bg-red-50"
+                          }`}
+                        >
                           <div className="flex items-start justify-between mb-3">
                             <div className="flex-1">
                               <div className="font-medium text-lg">
@@ -553,11 +633,34 @@ const Admin = () => {
                                 </div>
                               )}
                               <div className="text-sm text-muted-foreground mt-2">
-                                <div>Submitted by <strong>{propBet.user.username}</strong> • Week {propBet.week}</div>
-                                <div>Submitted: {new Date(propBet.submittedAt).toLocaleDateString()} at {new Date(propBet.submittedAt).toLocaleTimeString()}</div>
-                                {propBet.approvedAt && (
+                                <div>
+                                  Submitted by{" "}
+                                  <strong>{propBet.user.username}</strong> •
+                                  Week {propBet.week}
+                                </div>
+                                <div>
+                                  Submitted:{" "}
+                                  {new Date(
+                                    propBet.submittedAt
+                                  ).toLocaleDateString()}{" "}
+                                  at{" "}
+                                  {new Date(
+                                    propBet.submittedAt
+                                  ).toLocaleTimeString()}
+                                </div>
+                                {propBet.status === "approved" && (
                                   <div className="text-xs">
-                                    {propBet.status === 'approved' ? 'Approved' : 'Rejected'}: {new Date(propBet.approvedAt).toLocaleDateString()} at {new Date(propBet.approvedAt).toLocaleTimeString()}
+                                    {propBet.status === "approved"
+                                      ? "Approved"
+                                      : "Rejected"}
+                                    :{" "}
+                                    {new Date(
+                                      propBet.submittedAt
+                                    ).toLocaleDateString()}{" "}
+                                    at{" "}
+                                    {new Date(
+                                      propBet.submittedAt
+                                    ).toLocaleTimeString()}
                                   </div>
                                 )}
                               </div>
@@ -572,9 +675,11 @@ const Admin = () => {
                               }
                               className="text-sm font-semibold"
                             >
-                              {propBet.status === 'pending' ? '⏳ Pending' : 
-                               propBet.status === 'approved' ? '✅ Approved' : 
-                               '❌ Rejected'}
+                              {propBet.status === "pending"
+                                ? "⏳ Pending"
+                                : propBet.status === "approved"
+                                ? "✅ Approved"
+                                : "❌ Rejected"}
                             </Badge>
                           </div>
 
@@ -594,7 +699,9 @@ const Admin = () => {
                               </Button>
                               <Button
                                 variant={
-                                  action === "rejected" ? "destructive" : "outline"
+                                  action === "rejected"
+                                    ? "destructive"
+                                    : "outline"
                                 }
                                 size="sm"
                                 onClick={() =>
@@ -611,7 +718,9 @@ const Admin = () => {
                             <div className="mt-2">
                               <Badge
                                 variant={
-                                  action === "approved" ? "default" : "destructive"
+                                  action === "approved"
+                                    ? "default"
+                                    : "destructive"
                                 }
                               >
                                 {action === "approved"
@@ -695,7 +804,12 @@ const Admin = () => {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="new-role">Role</Label>
-                  <Select value={newRole} onValueChange={(v: string) => setNewRole(v as "user" | "admin")}>
+                  <Select
+                    value={newRole}
+                    onValueChange={(v: string) =>
+                      setNewRole(v as "user" | "admin")
+                    }
+                  >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -711,7 +825,9 @@ const Admin = () => {
                     id="new-avatar"
                     type="file"
                     accept="image/*"
-                    onChange={(e) => setNewAvatarFile(e.target.files?.[0] ?? null)}
+                    onChange={(e) =>
+                      setNewAvatarFile(e.target.files?.[0] ?? null)
+                    }
                   />
                 </div>
               </div>
@@ -730,7 +846,11 @@ const Admin = () => {
                 </div>
               )}
               <div className="mt-6 flex justify-end">
-                <Button onClick={handleCreateUser} disabled={isCreatingUser} className="min-w-32">
+                <Button
+                  onClick={handleCreateUser}
+                  disabled={isCreatingUser}
+                  className="min-w-32"
+                >
                   {isCreatingUser ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
@@ -776,64 +896,118 @@ const Admin = () => {
                   </thead>
                   <tbody>
                     {isLoadingUsers ? (
-                      <tr><td className="py-3" colSpan={5}>Loading...</td></tr>
+                      <tr>
+                        <td className="py-3" colSpan={5}>
+                          Loading...
+                        </td>
+                      </tr>
                     ) : users.length === 0 ? (
-                      <tr><td className="py-3" colSpan={5}>No users found</td></tr>
+                      <tr>
+                        <td className="py-3" colSpan={5}>
+                          No users found
+                        </td>
+                      </tr>
                     ) : (
                       users.map((u) => (
                         <tr key={u._id} className="border-b">
                           <td className="py-2 pr-4">
                             <img
-                              src={u.avatar
-                                ? (u.avatar.startsWith("/uploads")
+                              src={
+                                u.avatar
+                                  ? u.avatar.startsWith("/uploads")
                                     ? `${apiOrigin}${u.avatar}`
                                     : u.avatar.startsWith("uploads/")
                                     ? `${apiOrigin}/${u.avatar}`
-                                    : u.avatar)
-                                : "https://placehold.co/40x40"}
+                                    : u.avatar
+                                  : "https://placehold.co/40x40"
+                              }
                               alt="avatar"
                               className="h-8 w-8 rounded-full object-cover border"
                             />
                           </td>
                           <td className="py-2 pr-4">
                             {editingUserId === u._id ? (
-                              <Input value={editUsername} onChange={(e) => setEditUsername(e.target.value)} />
+                              <Input
+                                value={editUsername}
+                                onChange={(e) =>
+                                  setEditUsername(e.target.value)
+                                }
+                              />
                             ) : (
                               u.username
                             )}
                           </td>
                           <td className="py-2 pr-4">
                             {editingUserId === u._id ? (
-                              <Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+                              <Input
+                                type="email"
+                                value={editEmail}
+                                onChange={(e) => setEditEmail(e.target.value)}
+                              />
                             ) : (
                               u.email ?? "—"
                             )}
                           </td>
                           <td className="py-2 pr-4">
                             {editingUserId === u._id ? (
-                              <Select value={editRole} onValueChange={(v: string) => setEditRole(v as "user" | "admin")}>
-                                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                              <Select
+                                value={editRole}
+                                onValueChange={(v: string) =>
+                                  setEditRole(v as "user" | "admin")
+                                }
+                              >
+                                <SelectTrigger className="w-[140px]">
+                                  <SelectValue />
+                                </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="user">User</SelectItem>
                                   <SelectItem value="admin">Admin</SelectItem>
                                 </SelectContent>
                               </Select>
                             ) : (
-                              <Badge variant={u.role === "admin" ? "default" : "secondary"}>{u.role}</Badge>
+                              <Badge
+                                variant={
+                                  u.role === "admin" ? "default" : "secondary"
+                                }
+                              >
+                                {u.role}
+                              </Badge>
                             )}
                           </td>
                           <td className="py-2 pr-4">
                             {editingUserId === u._id ? (
                               <div className="flex gap-2">
-                                <Button size="sm" onClick={saveEditUser} disabled={isSavingEdit}>
+                                <Button
+                                  size="sm"
+                                  onClick={saveEditUser}
+                                  disabled={isSavingEdit}
+                                >
                                   {isSavingEdit ? "Saving..." : "Save"}
                                 </Button>
-                                <Button size="sm" variant="outline" onClick={() => setEditingUserId(null)}>Cancel</Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setEditingUserId(null)}
+                                >
+                                  Cancel
+                                </Button>
                               </div>
                             ) : (
                               <div className="flex gap-2">
-                                <Button size="sm" variant="outline" onClick={() => beginEditUser(u._id)}>Edit</Button>
-                                <Button size="sm" variant="destructive" onClick={() => deleteUser(u._id)}>Delete</Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => beginEditUser(u._id)}
+                                >
+                                  Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => deleteUser(u._id)}
+                                >
+                                  Delete
+                                </Button>
                               </div>
                             )}
                           </td>
