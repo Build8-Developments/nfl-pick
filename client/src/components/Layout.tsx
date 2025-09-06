@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
+import { apiOrigin } from "../lib/api";
 
 const Layout = () => {
   const { currentUser, logout } = useAuth();
@@ -39,23 +40,14 @@ const Layout = () => {
     }
     return location.pathname.startsWith(href);
   };
-  const apiOrigin =
-    import.meta.env.MODE === "development"
-      ? "http://localhost:3000"
-      : "https://api.blockhaven.net";
 
   const computeAvatarUrl = (raw?: string) => {
     const placeholder = "https://placehold.co/64x64";
     if (!raw) return placeholder;
-
-    // If already absolute, return as-is
-    if (/^https?:\/\//i.test(raw)) return raw;
-
-    // Normalize leading slashes
-    const normalized = raw.replace(/^\/+/, "");
-
-    // Always prepend apiOrigin
-    return `${apiOrigin}/${normalized}`;
+    if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+    if (raw.startsWith("/uploads")) return `${apiOrigin}${raw}`;
+    if (raw.startsWith("uploads/")) return `${apiOrigin}/${raw}`;
+    return raw;
   };
 
   const avatarUrl = computeAvatarUrl(currentUser?.avatar);

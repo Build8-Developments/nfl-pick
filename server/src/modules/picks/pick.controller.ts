@@ -302,29 +302,81 @@ export const upsertMyPick = async (req: Request, res: Response) => {
     }
 
     // TD Scorer uniqueness validation: check if player has been used before this season
+    // But allow editing picks before the week starts
     if (touchdownScorer && touchdownScorer.trim().length > 0) {
       const currentSeason = 2024; // You might want to make this dynamic based on current year
-      const existingUsage = await UsedTdScorer.findOne({
-        user: targetUserObjectId,
-        season: currentSeason,
-        playerId: touchdownScorer,
-      });
-
-      if (existingUsage) {
-        console.warn("[PICKS] upsert denied: TD scorer already used this season", {
-          userId: targetUserId,
-          week: weekNum,
+      
+      // Check if this is an edit of an existing pick for the same week
+      const isEditingSameWeek = existing && existing.touchdownScorer === touchdownScorer;
+      
+      // Only validate if not editing the same week with the same TD scorer
+      if (!isEditingSameWeek) {
+        const existingUsage = await UsedTdScorer.findOne({
+          user: targetUserObjectId,
+          season: currentSeason,
           playerId: touchdownScorer,
-          usedInWeek: existingUsage.week,
         });
-        return res
-          .status(400)
-          .json(
-            ApiResponse.error(
-              `You have already used this player as a TD scorer in week ${existingUsage.week}. Each player can only be selected once per season.`,
-              { playerId: touchdownScorer, usedInWeek: existingUsage.week }
-            )
-          );
+
+        if (existingUsage) {
+          // Check if the week where this player was used has already started
+          const weekGames = await Game.find({
+            gameWeek: new RegExp(`\\b${existingUsage.week}\\b`, "i"),
+          }).lean();
+
+          if (weekGames.length > 0) {
+            const now = new Date();
+            const parseGameDateTime = (
+              gameDate: string | undefined,
+              gameTime: string | undefined
+            ) => {
+              if (!gameDate || !gameTime) return new Date(8640000000000000);
+              const yyyy = Number(gameDate.slice(0, 4));
+              const mm = Number(gameDate.slice(4, 6));
+              const dd = Number(gameDate.slice(6, 8));
+              const m = gameTime.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
+              let hours = 12;
+              let minutes = 0;
+              if (m) {
+                hours = Number(m[1]);
+                minutes = m[2] ? Number(m[2]) : 0;
+                const meridiem = (m?.[3] ?? "a").toLowerCase();
+                if (meridiem === "p" && hours !== 12) hours += 12;
+                if (meridiem === "a" && hours === 12) hours = 0;
+              }
+              return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
+            };
+
+            // Check if any game in the week where this player was used has started
+            const weekHasStarted = weekGames.some((g) => {
+              const gameDateTime = parseGameDateTime(
+                (g as any).gameDate,
+                (g as any).gameTime
+              );
+              const bufferMinutes = 15;
+              const cutoffTime = new Date(
+                gameDateTime.getTime() + bufferMinutes * 60 * 1000
+              );
+              return now > cutoffTime;
+            });
+
+            if (weekHasStarted) {
+              console.warn("[PICKS] upsert denied: TD scorer already used in a week that has started", {
+                userId: targetUserId,
+                week: weekNum,
+                playerId: touchdownScorer,
+                usedInWeek: existingUsage.week,
+              });
+              return res
+                .status(400)
+                .json(
+                  ApiResponse.error(
+                    `You have already used this player as a TD scorer in week ${existingUsage.week}. Each player can only be selected once per season.`,
+                    { playerId: touchdownScorer, usedInWeek: existingUsage.week }
+                  )
+                );
+            }
+          }
+        }
       }
     }
 
@@ -575,16 +627,43 @@ export const upsertMyPick = async (req: Request, res: Response) => {
         payload: { userId: targetUserId, week: weekNum },
       });
     }
-    // Record TD scorer usage if pick is finalized and has a TD scorer
+    // Handle TD scorer usage tracking
     if (finalSaved?.isFinalized && touchdownScorer && touchdownScorer.trim().length > 0) {
       try {
         const currentSeason = 2024; // You might want to make this dynamic based on current year
-        await UsedTdScorer.create({
-          user: targetUserObjectId,
-          season: currentSeason,
-          playerId: touchdownScorer,
-          week: weekNum,
-        });
+        
+        // If there was a previous TD scorer for this week, remove it from usage tracking
+        if (existing && existing.touchdownScorer && existing.touchdownScorer !== touchdownScorer) {
+          await UsedTdScorer.deleteOne({
+            user: targetUserObjectId,
+            season: currentSeason,
+            playerId: existing.touchdownScorer,
+            week: weekNum,
+          });
+          console.log("[PICKS] Removed previous TD scorer usage", {
+            userId: targetUserId,
+            season: currentSeason,
+            playerId: existing.touchdownScorer,
+            week: weekNum,
+          });
+        }
+        
+        // Record the new TD scorer usage
+        await UsedTdScorer.findOneAndUpdate(
+          {
+            user: targetUserObjectId,
+            season: currentSeason,
+            playerId: touchdownScorer,
+            week: weekNum,
+          },
+          {
+            user: targetUserObjectId,
+            season: currentSeason,
+            playerId: touchdownScorer,
+            week: weekNum,
+          },
+          { upsert: true }
+        );
         console.log("[PICKS] Recorded TD scorer usage", {
           userId: targetUserId,
           season: currentSeason,
@@ -592,10 +671,26 @@ export const upsertMyPick = async (req: Request, res: Response) => {
           week: weekNum,
         });
       } catch (err: any) {
-        // If it's a duplicate key error, that's okay - the validation above should have caught it
-        if (err.code !== 11000) {
-          console.error("[PICKS] Error recording TD scorer usage:", err);
-        }
+        console.error("[PICKS] Error recording TD scorer usage:", err);
+      }
+    } else if (finalSaved?.isFinalized && existing && existing.touchdownScorer && !touchdownScorer) {
+      // If pick is finalized but TD scorer was removed, clean up the usage record
+      try {
+        const currentSeason = 2024;
+        await UsedTdScorer.deleteOne({
+          user: targetUserObjectId,
+          season: currentSeason,
+          playerId: existing.touchdownScorer,
+          week: weekNum,
+        });
+        console.log("[PICKS] Removed TD scorer usage (TD scorer cleared)", {
+          userId: targetUserId,
+          season: currentSeason,
+          playerId: existing.touchdownScorer,
+          week: weekNum,
+        });
+      } catch (err: any) {
+        console.error("[PICKS] Error removing TD scorer usage:", err);
       }
     }
 
@@ -738,6 +833,7 @@ export const getAllPicksByWeek = async (req: Request, res: Response) => {
         touchdownScorer: p.touchdownScorer || null,
         propBet: p.propBet || null,
         propBetOdds: p.propBetOdds || null,
+        propBetStatus: p.propBetStatus || 'pending',
         isFinalized: !!p.isFinalized,
         createdAt: p.createdAt,
         updatedAt: p.updatedAt,
@@ -788,6 +884,23 @@ export const getAllPropBets = async (req: Request, res: Response) => {
       }
     }
 
+    // Also check non-finalized picks to see if there are any with prop bets
+    const nonFinalizedPicks = allPicks.filter((pick) => !pick.isFinalized);
+    console.log("[PICKS] Non-finalized picks:", nonFinalizedPicks.length);
+    
+    if (nonFinalizedPicks.length > 0) {
+      const sample = nonFinalizedPicks[0];
+      if (sample) {
+        console.log("[PICKS] Sample non-finalized pick:", {
+          _id: sample._id,
+          propBet: sample.propBet,
+          propBetOdds: sample.propBetOdds,
+          isFinalized: sample.isFinalized,
+          user: sample.user,
+        });
+      }
+    }
+
     const picksWithPropBets = finalizedPicks.filter((pick) => {
       const hasPropBet =
         pick.propBet &&
@@ -807,6 +920,31 @@ export const getAllPropBets = async (req: Request, res: Response) => {
     });
     console.log("[PICKS] Picks with prop bets:", picksWithPropBets.length);
 
+    // Also check all picks (finalized and non-finalized) for prop bets
+    const allPicksWithPropBets = allPicks.filter((pick) => {
+      const hasPropBet =
+        pick.propBet &&
+        pick.propBet !== null &&
+        pick.propBet !== "" &&
+        pick.propBet.trim().length > 0;
+      return hasPropBet;
+    });
+    console.log("[PICKS] All picks with prop bets (any status):", allPicksWithPropBets.length);
+
+    if (allPicksWithPropBets.length > 0) {
+      const sample = allPicksWithPropBets[0];
+      if (sample) {
+        console.log("[PICKS] Sample pick with prop bet (any status):", {
+          _id: sample._id,
+          propBet: sample.propBet,
+          propBetOdds: sample.propBetOdds,
+          isFinalized: sample.isFinalized,
+          propBetStatus: sample.propBetStatus,
+          user: sample.user,
+        });
+      }
+    }
+
     if (picksWithPropBets.length > 0) {
       const sample = picksWithPropBets[0];
       if (sample) {
@@ -819,9 +957,16 @@ export const getAllPropBets = async (req: Request, res: Response) => {
       }
     }
 
-    // Use the picks we already found and filtered, but populate user data
+    // If no finalized picks with prop bets, try all picks with prop bets
+    let picksToProcess = picksWithPropBets;
+    if (picksToProcess.length === 0) {
+      console.log("[PICKS] No finalized picks with prop bets, checking all picks with prop bets...");
+      picksToProcess = allPicksWithPropBets;
+    }
+
+    // Use the picks we found, but populate user data
     const picks = await Promise.all(
-      picksWithPropBets.map(async (pick: any) => {
+      picksToProcess.map(async (pick: any) => {
         const populatedPick = await Pick.findById(pick._id)
           .populate("user", "username email avatar")
           .lean();
@@ -864,6 +1009,21 @@ export const getAllPropBets = async (req: Request, res: Response) => {
       }));
 
     console.log("[PICKS] Returning prop bets:", propBets.length);
+    
+    // If no prop bets found, return detailed debug info
+    if (propBets.length === 0) {
+      console.log("[PICKS] No prop bets found. Debug info:", {
+        totalPicks: allPicks.length,
+        finalizedPicks: finalizedPicks.length,
+        nonFinalizedPicks: nonFinalizedPicks.length,
+        allPicksWithPropBets: allPicksWithPropBets.length,
+        picksWithPropBets: picksWithPropBets.length
+      });
+      
+      // Return empty array instead of null
+      return res.status(200).json(ApiResponse.success([]));
+    }
+    
     return res.status(200).json(ApiResponse.success(propBets));
   } catch (error) {
     console.error("[PICKS] Error fetching prop bets:", error);
@@ -1026,6 +1186,90 @@ export const debugPropBetStatus = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("[DEBUG] Error checking prop bet status:", error);
     return res.status(500).json(ApiResponse.error("Failed to check prop bet status"));
+  }
+};
+
+// Debug endpoint to check all picks
+export const debugAllPicksSimple = async (req: Request, res: Response) => {
+  try {
+    console.log("[DEBUG] Fetching all picks...");
+    
+    const allPicks = await Pick.find({}).lean();
+    console.log("[DEBUG] Total picks in database:", allPicks.length);
+    
+    const picksWithPropBets = allPicks.filter(pick => 
+      pick.propBet && 
+      pick.propBet.trim().length > 0
+    );
+    
+    console.log("[DEBUG] Picks with prop bets:", picksWithPropBets.length);
+    
+    const result = allPicks.map(pick => ({
+      _id: pick._id,
+      user: pick.user,
+      week: pick.week,
+      propBet: pick.propBet,
+      propBetOdds: pick.propBetOdds,
+      propBetStatus: pick.propBetStatus,
+      isFinalized: pick.isFinalized,
+      createdAt: pick.createdAt,
+      updatedAt: pick.updatedAt
+    }));
+    
+    return res.status(200).json(ApiResponse.success({
+      total: allPicks.length,
+      picksWithPropBets: picksWithPropBets.length,
+      picks: result
+    }));
+  } catch (error) {
+    console.error("[DEBUG] Error fetching all picks:", error);
+    return res.status(500).json(ApiResponse.error("Failed to fetch all picks"));
+  }
+};
+
+// Simple test endpoint to check database connection (no auth required)
+export const testDatabaseConnection = async (req: Request, res: Response) => {
+  try {
+    console.log("[TEST] Testing database connection...");
+    
+    const allPicks = await Pick.find({}).lean();
+    console.log("[TEST] Total picks in database:", allPicks.length);
+    
+    const picksWithPropBets = allPicks.filter(pick => 
+      pick.propBet && 
+      pick.propBet.trim().length > 0
+    );
+    
+    console.log("[TEST] Picks with prop bets:", picksWithPropBets.length);
+    
+    // Show detailed info about all picks
+    const picksInfo = allPicks.map(pick => ({
+      _id: pick._id,
+      week: pick.week,
+      propBet: pick.propBet,
+      propBetOdds: pick.propBetOdds,
+      propBetStatus: pick.propBetStatus,
+      isFinalized: pick.isFinalized,
+      user: pick.user,
+      createdAt: pick.createdAt
+    }));
+    
+    return res.status(200).json({
+      success: true,
+      message: "Database connection successful",
+      data: {
+        totalPicks: allPicks.length,
+        picksWithPropBets: picksWithPropBets.length,
+        allPicks: picksInfo
+      }
+    });
+  } catch (error) {
+    console.error("[TEST] Database connection error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Database connection failed",
+      error: error instanceof Error ? error.message : "Unknown error"
+    });
   }
 };
 

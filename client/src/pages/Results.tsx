@@ -44,6 +44,27 @@ const Results = () => {
   const [picks, setPicks] = useState<BackendPick[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [users, setUsers] = useState<
+    Array<{ _id: string; username: string; avatar: string }>
+  >([]);
+
+  // Fetch users from backend
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const response = await apiClient.get<{
+          success: boolean;
+          data?: Array<{ _id: string; username: string; avatar: string }>;
+        }>("users");
+        if (response.data && Array.isArray(response.data)) {
+          setUsers(response.data);
+        }
+      } catch (error) {
+        console.error("Error fetching users:", error);
+      }
+    };
+    fetchUsers();
+  }, []);
 
   useEffect(() => {
     const init = async () => {
@@ -220,10 +241,15 @@ const Results = () => {
           ) : (
             <div className="space-y-4">
               {picks.map((p) => {
-                const username =
-                  typeof p.user === "string"
-                    ? p.user
-                    : p.user?.username || "User";
+                const username = (() => {
+                  if (typeof p.user === "string") {
+                    // If user is just an ID string, try to find the user in our users list
+                    const foundUser = users.find((u) => u._id === p.user);
+                    return foundUser?.username || "User";
+                  } else {
+                    return p.user?.username || "User";
+                  }
+                })();
                 return (
                   <div key={p._id} className="p-4 border rounded-lg">
                     <div className="flex items-center justify-between mb-2">

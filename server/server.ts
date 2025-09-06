@@ -56,6 +56,7 @@ server.use(
       httpOnly: true, // Prevent XSS attacks
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
       sameSite: NODE_ENV === "production" ? "strict" : "lax", // CSRF protection
+      domain: NODE_ENV === "production" ? undefined : "localhost", // Allow localhost in development
     },
     name: "nfl-picks-session", // Custom session name
     rolling: true, // Reset expiration on activity
@@ -83,7 +84,7 @@ server.use(
 server.use(
   cors({
     // Allow specific origins for development
-    origin: "*",
+    origin: ["http://localhost:5173", "http://localhost:3000"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Last-Event-ID"],

@@ -147,7 +147,6 @@ const Picks = () => {
         if (!active) return;
         const usedScorers = res?.data || [];
         setUsedTdScorers(usedScorers);
-        console.log("[PICKS] Loaded used TD scorers:", usedScorers);
       })
       .catch((err) => {
         console.error("[PICKS] Error loading used TD scorers:", err);
@@ -413,12 +412,7 @@ const Picks = () => {
     playerName: string
   ) => {
     if (!canEditPicks()) return;
-    if (usedTdScorers.includes(playerId)) {
-      alert(
-        `You have already used ${playerName} as a TD scorer this season. Each player can only be selected once per season.`
-      );
-      return;
-    }
+    // Remove client-side validation - let the server handle it based on week timing
     setTouchdownScorer(playerId);
     setPlayerSearchValue(playerName);
     setPlayerSearchOpen(false);
@@ -498,27 +492,13 @@ const Picks = () => {
       propBetOdds,
       isFinalized: true,
     };
-    console.log("[PICKS] Submitting payload:", payload);
-    console.log("[PICKS] Prop bet details:", { propBet, propBetOdds });
-    console.log("[PICKS] Prop bet validation:", {
-      propBetExists: !!propBet,
-      propBetLength: propBet?.length || 0,
-      propBetOddsExists: !!propBetOdds,
-      propBetOddsLength: propBetOdds?.length || 0,
-    });
 
     try {
-      console.log("[PICKS] Making API call to picks endpoint");
       const res = await apiClient.post<{
         success?: boolean;
         data?: unknown;
         message?: string;
       }>("picks", payload);
-      console.log("[PICKS] Submit response:", res);
-      console.log("[PICKS] Response data type:", typeof res.data);
-      console.log("[PICKS] Response data value:", res.data);
-      console.log("[PICKS] Full response object keys:", Object.keys(res));
-      console.log("[PICKS] Raw response string:", JSON.stringify(res, null, 2));
       setHasSubmitted(true);
       // Clear all fields after submit
       setPicks({});
@@ -974,22 +954,17 @@ const Picks = () => {
                             value={player.longName}
                             className={`flex justify-between items-center ${
                               isUsed && !isSelected
-                                ? "opacity-50 cursor-not-allowed"
+                                ? "opacity-75"
                                 : ""
                             }`}
                             onSelect={() => {
-                              if (isUsed && !isSelected) {
-                                alert(
-                                  `You have already used ${player.longName} as a TD scorer this season. Each player can only be selected once per season.`
-                                );
-                                return;
-                              }
+                              // Allow re-selecting the same player for the same week
+                              // The server will handle the actual validation based on week timing
                               handleTouchdownScorerSelect(
                                 player.playerID,
                                 player.longName as string
                               );
                             }}
-                            disabled={isUsed && !isSelected}
                           >
                             <Check
                               className={`mr-2 h-4 w-4 ${
