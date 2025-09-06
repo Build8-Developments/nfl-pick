@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 // Removed mock data import - using real API data
 import { apiClient, resolveBaseUrl } from "../lib/api";
+import { computeAvatarUrl } from "../lib/avatarUtils";
 
 type ApiSuccess<T> = { success: true; data: T; message?: string };
 
@@ -423,13 +424,6 @@ const Admin = () => {
     rejectedProps: propBets.filter((p) => p.status === "rejected").length,
   };
 
-  const buildUrl = (path: string) => {
-    const base = resolveBaseUrl();
-    return `${import.meta.env.VITE_API_ORIGIN}${base}${path.replace(
-      /^\/+/,
-      ""
-    )}`;
-  };
 
   return (
     <div className="space-y-6">
@@ -952,7 +946,7 @@ const Admin = () => {
                         <tr key={u._id} className="border-b">
                           <td className="py-2 pr-4">
                             <img
-                              src={buildUrl(u.avatar!)}
+                              src={computeAvatarUrl(u.avatar)}
                               alt={u.username + "'s avatar"}
                               className="h-8 w-8 rounded-full object-cover border"
                             />
