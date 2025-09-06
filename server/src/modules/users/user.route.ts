@@ -3,6 +3,7 @@ import { protectAdmin } from "../../middlewares/auth.middleware.js";
 import { asyncHandler } from "../../middlewares/errorHandler.middleware.js";
 import {
   createUser,
+  createTestUsers,
   deleteUser,
   getUsers,
   getUserById,
@@ -26,18 +27,12 @@ userRouter.use(protectAdmin);
 userRouter.get("/", asyncHandler(getUsers));
 userRouter.get("/:id", asyncHandler(getUserById));
 
-// Avatar upload with correct middleware order:
-// 1. Parse multipart data (files stored in memory)
-// 2. Validate form data against Zod schema
-// 3. Check if user already exists (username/email)
-// 4. If user exists: return error response
-// 5. If user doesn't exist: save file to disk and create user
 userRouter.post(
   "/",
-  parseMultipartData(), // Phase 1: Parse multipart data (files in memory)
-  validateMultipartForm(createUserSchema), // Phase 2: Validate form data
-  checkUserExistence, // Phase 3: Check if user exists
-  asyncHandler(createUser) // Phase 4: Create user (file saved here if validation passes)
+  parseMultipartData(),
+  validateMultipartForm(createUserSchema),
+  checkUserExistence,
+  asyncHandler(createUser)
 );
 
 userRouter.patch(
@@ -47,5 +42,8 @@ userRouter.patch(
 );
 
 userRouter.delete("/:id", asyncHandler(deleteUser));
+
+// Test endpoint for creating sample users
+userRouter.post("/test-users", asyncHandler(createTestUsers));
 
 export default userRouter;

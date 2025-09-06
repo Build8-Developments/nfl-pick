@@ -1,25 +1,21 @@
 import bcrypt from "bcryptjs";
 import mongoose, { Schema, Document } from "mongoose";
 
-// Interface for the document
 export interface IUser extends Document {
   username: string;
-  email?: string;
   passwordHash: string;
   avatar: string;
   role: "admin" | "user";
+  email?: string;
 
-  // Points system
   points?: number;
   totalBets?: number;
   correctBets?: number;
   winRate?: number;
 
-  // Bet references
   bets?: mongoose.Types.ObjectId[];
   props?: mongoose.Types.ObjectId[];
 
-  // Timestamps
   _createdAt?: Date;
   _updatedAt?: Date;
 }
@@ -35,17 +31,6 @@ const UserSchema = new Schema<IUser>(
       maxlength: [30, "Username cannot exceed 30 characters"],
     },
 
-    email: {
-      type: String,
-      unique: true,
-      trim: true,
-      lowercase: true,
-      match: [
-        /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
-        "Please enter a valid email",
-      ],
-    },
-
     passwordHash: {
       type: String,
       required: [true, "Password hash is required"],
@@ -56,6 +41,13 @@ const UserSchema = new Schema<IUser>(
       default: "https://placehold.co/64x64",
     },
 
+    email: {
+      type: String,
+      lowercase: true,
+      trim: true,
+      sparse: true, // allow multiple docs without email
+    },
+
     role: {
       type: String,
       enum: ["admin", "user"],
@@ -64,7 +56,7 @@ const UserSchema = new Schema<IUser>(
 
     points: {
       type: Number,
-      default: 100, // Start with 100 points
+      default: 100,
       min: [0, "Points cannot be negative"],
     },
 
@@ -87,7 +79,6 @@ const UserSchema = new Schema<IUser>(
       max: [100, "Win rate cannot exceed 100%"],
     },
 
-    // Bet references
     bets: [
       {
         type: Schema.Types.ObjectId,
@@ -110,6 +101,11 @@ const UserSchema = new Schema<IUser>(
 
 UserSchema.index({ points: -1 });
 UserSchema.index({ role: 1 });
+// Ensure unique emails only when provided
+UserSchema.index(
+  { email: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { email: { $type: "string" } } }
+);
 
 UserSchema.virtual("calculatedWinRate").get(function () {
   if (!this.totalBets || this.totalBets === 0) return 0;
@@ -137,7 +133,6 @@ UserSchema.methods.addBet = function (
   return this.save();
 };
 
-// Method to add prop
 UserSchema.methods.addProp = function (
   propId: mongoose.Types.ObjectId
 ): Promise<void> {
@@ -145,12 +140,10 @@ UserSchema.methods.addProp = function (
   return this.save();
 };
 
-// Static method to find by username
 UserSchema.statics.findByUsername = function (username: string) {
   return this.findOne({ username: username.toLowerCase() });
 };
 
-// Static method to get leaderboard
 UserSchema.statics.getLeaderboard = function (limit: number = 10) {
   return this.find({ role: "user" })
     .sort({ points: -1 })

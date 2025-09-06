@@ -3,9 +3,9 @@ import type { ObjectId } from "mongoose";
 export interface IUser {
   _id: ObjectId;
   username: string; // Unique login username
-  email?: string; // Unique email
   passwordHash: string; // Bcrypt hashed password
   avatar: string;
+  email?: string;
   role: "admin" | "user"; // Role-based access
 
   // Points system

@@ -9,31 +9,46 @@ import {
 } from "../utils/errors.js";
 
 const protect = async (req: Request, res: Response, next: NextFunction) => {
-  let token: string | undefined;
-
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith("Bearer")
-  ) {
-    token = req.headers.authorization.split(" ")[1];
-  }
-
-  if (!token) {
+  // Check if user is authenticated via session
+  const session = req.session as any;
+  if (!session || !session.isAuthenticated) {
     return next(new AuthenticationError("Please login to view this page."));
   }
 
   try {
-    const { id, role } = verifyToken(token);
-    const user = await User.findById(id).select("-passwordHash");
+    // Verify the session token if it exists
+    if (session.token) {
+      const { id, role } = verifyToken(session.token);
+      
+      // Verify the user still exists and is active
+      const user = await User.findById(id).select("-passwordHash");
+      if (!user) {
+        // Clear invalid session
+        session.destroy(() => {});
+        return next(new AuthenticationError("User not found"));
+      }
 
-    if (!user) {
-      return next(new AuthenticationError("Unauthorized"));
+      // Attach the user to the request object
+      req.user = user;
+      next();
+    } else {
+      // Fallback: try to get user from session userId
+      if (session.userId) {
+        const user = await User.findById(session.userId).select("-passwordHash");
+        if (!user) {
+          session.destroy(() => {});
+          return next(new AuthenticationError("User not found"));
+        }
+        req.user = user;
+        next();
+      } else {
+        return next(new AuthenticationError("Invalid session"));
+      }
     }
-
-    // attach the user to the request object
-    (req as Request & { user: IUser }).user = user;
-    next();
   } catch (error: any) {
+    // Clear invalid session on any error
+    session.destroy(() => {});
+    
     if (error.name === "JsonWebTokenError") {
       return next(new AuthenticationError("Invalid token"));
     } else if (error.name === "TokenExpiredError") {
@@ -45,7 +60,7 @@ const protect = async (req: Request, res: Response, next: NextFunction) => {
 };
 
 const protectAdmin = (req: Request, res: Response, next: NextFunction) => {
-  const user = (req as Request & { user?: IUser }).user;
+  const user = req.user;
 
   if (NODE_ENV === "production") {
     if (!user || user.role !== "admin") {

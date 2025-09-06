@@ -4,10 +4,10 @@ import { ApiResponse } from "../../utils/ApiResponse.js";
 
 const createUserSchema = z.object({
   username: z.string().min(3).max(30).toLowerCase(),
-  email: z.email().toLowerCase().optional(),
   passwordHash: z.string().min(8).max(30),
   avatar: z.string().optional(),
-  role: z.enum(["admin", "user"]),
+  email: z.string().email().toLowerCase().optional(),
+  role: z.enum(["admin", "user"]).optional(),
   points: z.number().default(0),
   totalBets: z.number().default(0),
   correctBets: z.number().default(0),
@@ -18,9 +18,9 @@ const createUserSchema = z.object({
 
 const updateUserSchema = z.object({
   username: z.string().min(3).max(30).toLowerCase().optional(),
-  email: z.email().toLowerCase().optional(),
   passwordHash: z.string().min(8).max(30).optional(),
   avatar: z.string().optional(),
+  email: z.string().email().toLowerCase().optional(),
   role: z.enum(["admin", "user"]).optional(),
   points: z.number().default(0).optional(),
   totalBets: z.number().default(0).optional(),
