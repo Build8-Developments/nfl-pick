@@ -1,6 +1,6 @@
 import { useAuth } from "../contexts/useAuth";
 import { useEffect, useState } from "react";
-import { dashboardApi } from "@/lib/api";
+import { dashboardApi, apiClient } from "@/lib/api";
 import {
   Card,
   CardContent,
@@ -40,7 +40,7 @@ const getPlayerName = async (playerId: string): Promise<string> => {
 };
 
 const Dashboard = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, isLoading: authLoading } = useAuth();
   const [currentWeek, setCurrentWeek] = useState<number>(1);
   const [summary, setSummary] = useState<{
     totalUsers: number;
@@ -68,9 +68,70 @@ const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [playerName, setPlayerName] = useState<string>("");
+  const [seasonRecord, setSeasonRecord] = useState<{ wins: number; losses: number; percentage: number }>({
+    wins: 0,
+    losses: 0,
+    percentage: 0
+  });
+
+  // Function to calculate season record from picks data
+  const calculateSeasonRecord = async () => {
+    // Don't calculate if user is not authenticated
+    if (!currentUser) {
+      return;
+    }
+
+    try {
+      let totalWins = 0;
+      let totalLosses = 0;
+      
+      // Get all weeks with picks
+      const weeksRes = await apiClient.get<{ success: boolean; data?: number[] }>("picks/weeks");
+      const weeks = Array.isArray(weeksRes.data) ? weeksRes.data : [];
+      
+      // For each week, get the user's picks and calculate wins/losses
+      for (const week of weeks) {
+        const pickRes = await apiClient.get<{
+          success: boolean;
+          data?: {
+            selections: Record<string, string>;
+            outcomes?: Record<string, boolean | null>;
+            isFinalized?: boolean;
+          } | null;
+        }>(`picks/${week}`);
+        
+        if (pickRes.success && pickRes.data?.isFinalized && pickRes.data.outcomes) {
+          const outcomes = pickRes.data.outcomes;
+          const wins = Object.values(outcomes).filter(outcome => outcome === true).length;
+          const losses = Object.values(outcomes).filter(outcome => outcome === false).length;
+          
+          totalWins += wins;
+          totalLosses += losses;
+        }
+      }
+      
+      const totalGames = totalWins + totalLosses;
+      const percentage = totalGames > 0 ? (totalWins / totalGames) * 100 : 0;
+      
+      setSeasonRecord({
+        wins: totalWins,
+        losses: totalLosses,
+        percentage: percentage
+      });
+    } catch (error) {
+      console.error("Error calculating season record:", error);
+      // Keep default values on error
+    }
+  };
 
   useEffect(() => {
     const fetchDashboardData = async () => {
+      // Don't fetch data if user is not authenticated
+      if (!currentUser) {
+        setIsLoading(false);
+        return;
+      }
+
       try {
         setIsLoading(true);
         setError(null);
@@ -113,6 +174,9 @@ const Dashboard = () => {
           setLeaderboard(leaderboardRes.data);
         }
 
+        // Calculate season record from actual picks data
+        await calculateSeasonRecord();
+
         // If we still don't have pick data, try fetching for week 1 directly
         if (!userPick) {
           console.log("No pick data found, trying week 1 directly...");
@@ -142,7 +206,7 @@ const Dashboard = () => {
 
     fetchDashboardData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty dependency array is intentional - we only want to run this once on mount
+  }, [currentUser]); // Re-run when currentUser changes
 
   // Fetch player name when userPick changes
   useEffect(() => {
@@ -178,6 +242,35 @@ const Dashboard = () => {
   //     minute: "2-digit",
   //   });
   // };
+
+  // Show loading while authentication is being checked
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  // Redirect to login if not authenticated
+  if (!currentUser) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+          <p className="text-muted-foreground mt-1">
+            Please log in to view your dashboard.
+          </p>
+        </div>
+        <div className="text-center py-8">
+          <p className="text-muted-foreground mb-4">You need to be logged in to access the dashboard.</p>
+          <Button asChild>
+            <Link to="/login">Go to Login</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -223,12 +316,10 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {currentUser?.seasonRecord.wins}-
-              {currentUser?.seasonRecord.losses}
+              {seasonRecord.wins}-{seasonRecord.losses}
             </div>
             <p className="text-xs text-muted-foreground">
-              {(currentUser?.seasonRecord.percentage ?? 0 * 100).toFixed(1)}%
-              win rate
+              {seasonRecord.percentage.toFixed(1)}% win rate
             </p>
           </CardContent>
         </Card>

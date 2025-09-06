@@ -129,6 +129,7 @@ const Admin = () => {
   // Prop bet filtering state
   const [selectedUser, setSelectedUser] = useState<string>("all");
   const [selectedPropWeek, setSelectedPropWeek] = useState<string>("all");
+  const [selectedStatus, setSelectedStatus] = useState<string>("pending"); // Default to showing pending
 
   // Get unique weeks from prop bets
   const availableWeeks = useMemo(() => {
@@ -136,14 +137,15 @@ const Admin = () => {
     return weeks.sort((a, b) => a - b);
   }, [propBets]);
 
-  // Filter prop bets based on selected user and week
+  // Filter prop bets based on selected user, week, and status
   const filteredPropBets = useMemo(() => {
     return propBets.filter(propBet => {
       const userMatch = selectedUser === "all" || propBet.user._id === selectedUser;
       const weekMatch = selectedPropWeek === "all" || propBet.week.toString() === selectedPropWeek;
-      return userMatch && weekMatch;
+      const statusMatch = selectedStatus === "all" || propBet.status === selectedStatus;
+      return userMatch && weekMatch && statusMatch;
     });
-  }, [propBets, selectedUser, selectedPropWeek]);
+  }, [propBets, selectedUser, selectedPropWeek, selectedStatus]);
 
   const fetchGames = async () => {
     try {
@@ -341,6 +343,8 @@ const Admin = () => {
         ).length,
     submittedPicks: submittedPicksCount,
     pendingProps: propBets.filter((p) => p.status === "pending").length,
+    approvedProps: propBets.filter((p) => p.status === "approved").length,
+    rejectedProps: propBets.filter((p) => p.status === "rejected").length,
   };
 
   return (
@@ -407,14 +411,16 @@ const Admin = () => {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Props</CardTitle>
+            <CardTitle className="text-sm font-medium">Prop Bet Queue</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-bold text-yellow-600">
               {currentWeekStats.pendingProps}
             </div>
-            <p className="text-xs text-muted-foreground">need approval</p>
+            <p className="text-xs text-muted-foreground">
+              pending • {currentWeekStats.approvedProps} approved • {currentWeekStats.rejectedProps} rejected
+            </p>
           </CardContent>
         </Card>
 
@@ -483,6 +489,20 @@ const Admin = () => {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="flex-1">
+                  <Label htmlFor="status-filter">Filter by Status</Label>
+                  <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Statuses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="pending">Pending Approval</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="text-sm text-muted-foreground">
                   Showing {filteredPropBets.length} of {propBets.length} prop bets
                 </div>
@@ -517,10 +537,14 @@ const Admin = () => {
                       const action = propBetActions[propBet._id];
 
                       return (
-                        <div key={propBet._id} className="p-4 border rounded-lg">
+                        <div key={propBet._id} className={`p-4 border rounded-lg ${
+                          propBet.status === 'pending' ? 'border-yellow-200 bg-yellow-50' : 
+                          propBet.status === 'approved' ? 'border-green-200 bg-green-50' : 
+                          'border-red-200 bg-red-50'
+                        }`}>
                           <div className="flex items-start justify-between mb-3">
                             <div className="flex-1">
-                              <div className="font-medium">
+                              <div className="font-medium text-lg">
                                 {propBet.propBet}
                               </div>
                               {propBet.propBetOdds && (
@@ -528,9 +552,14 @@ const Admin = () => {
                                   Odds: {propBet.propBetOdds}
                                 </div>
                               )}
-                              <div className="text-sm text-muted-foreground mt-1">
-                                Submitted by {propBet.user.username} • Week {propBet.week} •{" "}
-                                {new Date(propBet.submittedAt).toLocaleDateString()}
+                              <div className="text-sm text-muted-foreground mt-2">
+                                <div>Submitted by <strong>{propBet.user.username}</strong> • Week {propBet.week}</div>
+                                <div>Submitted: {new Date(propBet.submittedAt).toLocaleDateString()} at {new Date(propBet.submittedAt).toLocaleTimeString()}</div>
+                                {propBet.approvedAt && (
+                                  <div className="text-xs">
+                                    {propBet.status === 'approved' ? 'Approved' : 'Rejected'}: {new Date(propBet.approvedAt).toLocaleDateString()} at {new Date(propBet.approvedAt).toLocaleTimeString()}
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <Badge
@@ -541,8 +570,11 @@ const Admin = () => {
                                   ? "default"
                                   : "destructive"
                               }
+                              className="text-sm font-semibold"
                             >
-                              {propBet.status}
+                              {propBet.status === 'pending' ? '⏳ Pending' : 
+                               propBet.status === 'approved' ? '✅ Approved' : 
+                               '❌ Rejected'}
                             </Badge>
                           </div>
 

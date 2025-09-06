@@ -16,6 +16,7 @@ import adminRouter from "./modules/admin/admin.route.js";
 import dashboardRouter from "./modules/dashboard/dashboard.route.js";
 import uploadRouter from "./modules/uploads/upload.route.js";
 import liveScoringRouter from "./modules/live-scoring/liveScoring.route.js";
+import notificationRouter from "./modules/notifications/notification.route.js";
 
 const app = express.Router();
 
@@ -77,6 +78,9 @@ app.use("/dashboard", dashboardRouter);
 
 // Live scoring
 app.use("/live-scoring", liveScoringRouter);
+
+// Notifications
+app.use("/notifications", notificationRouter);
 
 app.use((req: Request, res: Response) => {
   res.status(404).json(ApiResponse.error(`Route ${req.originalUrl} not found`));

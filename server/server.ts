@@ -5,6 +5,9 @@ import rateLimit from "express-rate-limit";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import cookieParser from "cookie-parser";
+import session from "express-session";
+import MongoStore from "connect-mongo";
 import app from "./src/app.js";
 import connectDB from "./src/config/database.js";
 import { PORT, NODE_ENV, MONGODB_URI } from "./src/config/environment.js";
@@ -16,6 +19,7 @@ import {
   syncAllPlayers,
   syncBettingOddsForAllGames,
 } from "./src/modules/sync/sync.service.js";
+import "./src/services/notification.service.js";
 
 const server = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -32,6 +36,42 @@ if (!fs.existsSync(uploadsDir)) {
 
 // Morgan logger
 server.use(morgan("dev"));
+
+// Cookie parser middleware
+server.use(cookieParser());
+
+// Session middleware
+server.use(
+  session({
+    secret: process.env.JWT_SECRET || "fallback-secret-key",
+    resave: false,
+    saveUninitialized: false, // Only save sessions that have been modified
+    store: MongoStore.create({
+      mongoUrl: MONGODB_URI,
+      collectionName: "sessions",
+      ttl: 7 * 24 * 60 * 60, // 7 days in seconds
+    }),
+    cookie: {
+      secure: NODE_ENV === "production", // Use secure cookies in production
+      httpOnly: true, // Prevent XSS attacks
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
+      sameSite: NODE_ENV === "production" ? "strict" : "lax", // CSRF protection
+    },
+    name: "nfl-picks-session", // Custom session name
+    rolling: true, // Reset expiration on activity
+  })
+);
+
+// Debug middleware to log session info
+server.use((req, res, next) => {
+  console.log("Request session debug:", {
+    hasSession: !!req.session,
+    sessionId: req.sessionID,
+    sessionKeys: req.session ? Object.keys(req.session) : [],
+    cookies: req.headers.cookie
+  });
+  next();
+});
 
 // Global Middlewares
 server.use(

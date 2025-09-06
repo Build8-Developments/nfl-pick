@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { ApiResponse } from "../../utils/ApiResponse.js";
 import Pick from "./pick.model.js";
 import Game from "../games/games.model.js";
+import UsedTdScorer from "./usedTdScorers.model.js";
 import { broadcastLiveEvent } from "../live/live.controller.js";
 
 export const getMyPickByWeek = async (req: Request, res: Response) => {
@@ -15,6 +16,7 @@ export const getMyPickByWeek = async (req: Request, res: Response) => {
       userId,
       week,
       found: Boolean(pick),
+      propBetStatus: pick?.propBetStatus,
     });
 
     // If pick exists and has a touchdown scorer, resolve player name
@@ -26,6 +28,11 @@ export const getMyPickByWeek = async (req: Request, res: Response) => {
         (pick as any).touchdownScorerName =
           player.longName || player.espnName || player.cbsLongName;
       }
+    }
+
+    // Ensure propBetStatus is included in the response
+    if (pick) {
+      (pick as any).propBetStatus = pick.propBetStatus || 'pending';
     }
   } catch (err) {
     console.error("[PICKS] getMyPickByWeek error", { userId, week, err });
@@ -294,6 +301,33 @@ export const upsertMyPick = async (req: Request, res: Response) => {
       }
     }
 
+    // TD Scorer uniqueness validation: check if player has been used before this season
+    if (touchdownScorer && touchdownScorer.trim().length > 0) {
+      const currentSeason = 2024; // You might want to make this dynamic based on current year
+      const existingUsage = await UsedTdScorer.findOne({
+        user: targetUserObjectId,
+        season: currentSeason,
+        playerId: touchdownScorer,
+      });
+
+      if (existingUsage) {
+        console.warn("[PICKS] upsert denied: TD scorer already used this season", {
+          userId: targetUserId,
+          week: weekNum,
+          playerId: touchdownScorer,
+          usedInWeek: existingUsage.week,
+        });
+        return res
+          .status(400)
+          .json(
+            ApiResponse.error(
+              `You have already used this player as a TD scorer in week ${existingUsage.week}. Each player can only be selected once per season.`,
+              { playerId: touchdownScorer, usedInWeek: existingUsage.week }
+            )
+          );
+      }
+    }
+
     // Finalization validation: ensure full submission for all not-yet-started games this week
     if (isFinalized) {
       // Load all games for the requested week and determine which are still eligible (not started + 15m buffer)
@@ -472,9 +506,18 @@ export const upsertMyPick = async (req: Request, res: Response) => {
     }
     if (propBet && propBet.trim().length > 0) {
       updateData.propBet = propBet;
+      // Set prop bet status to pending when a new prop bet is submitted
+      updateData.propBetStatus = 'pending';
+    } else if (propBet === "" || propBet === null) {
+      // Clear prop bet if empty string or null
+      updateData.propBet = "";
+      updateData.propBetStatus = undefined; // Remove status when clearing
     }
     if (propBetOdds && propBetOdds.trim().length > 0) {
       updateData.propBetOdds = propBetOdds;
+    } else if (propBetOdds === "" || propBetOdds === null) {
+      // Clear prop bet odds if empty string or null
+      updateData.propBetOdds = "";
     }
 
     console.log("[PICKS] Update data:", updateData);
@@ -532,6 +575,30 @@ export const upsertMyPick = async (req: Request, res: Response) => {
         payload: { userId: targetUserId, week: weekNum },
       });
     }
+    // Record TD scorer usage if pick is finalized and has a TD scorer
+    if (finalSaved?.isFinalized && touchdownScorer && touchdownScorer.trim().length > 0) {
+      try {
+        const currentSeason = 2024; // You might want to make this dynamic based on current year
+        await UsedTdScorer.create({
+          user: targetUserObjectId,
+          season: currentSeason,
+          playerId: touchdownScorer,
+          week: weekNum,
+        });
+        console.log("[PICKS] Recorded TD scorer usage", {
+          userId: targetUserId,
+          season: currentSeason,
+          playerId: touchdownScorer,
+          week: weekNum,
+        });
+      } catch (err: any) {
+        // If it's a duplicate key error, that's okay - the validation above should have caught it
+        if (err.code !== 11000) {
+          console.error("[PICKS] Error recording TD scorer usage:", err);
+        }
+      }
+    }
+
     console.log(
       "[PICKS] About to return response with data:",
       finalSaved ? "HAS DATA" : "NULL DATA"
@@ -790,12 +857,10 @@ export const getAllPropBets = async (req: Request, res: Response) => {
         week: pick.week,
         propBet: pick.propBet,
         propBetOdds: pick.propBetOdds,
-        status: pick.propBetResolved
-          ? pick.propBetCorrect
-            ? "approved"
-            : "rejected"
-          : "pending",
+        status: pick.propBetStatus || 'pending', // Use the new propBetStatus field
         submittedAt: pick.createdAt,
+        approvedAt: pick.propBetApprovedAt,
+        approvedBy: pick.propBetApprovedBy,
       }));
 
     console.log("[PICKS] Returning prop bets:", propBets.length);
@@ -811,6 +876,7 @@ export const updatePropBetStatus = async (req: Request, res: Response) => {
   try {
     const { propBetId } = req.params;
     const { status } = req.body;
+    const adminUserId = req.user?._id; // Get admin user ID from auth middleware
 
     if (!propBetId || !status) {
       return res
@@ -825,17 +891,28 @@ export const updatePropBetStatus = async (req: Request, res: Response) => {
     }
 
     const updateData = {
-      propBetResolved: true,
+      propBetStatus: status,
+      propBetApprovedAt: new Date(),
+      propBetApprovedBy: adminUserId,
+      // Only set resolved/correct if approved
+      propBetResolved: status === "approved",
       propBetCorrect: status === "approved",
     };
 
     const updatedPick = await Pick.findByIdAndUpdate(propBetId, updateData, {
       new: true,
-    });
+    }).populate('user', 'username email avatar');
 
     if (!updatedPick) {
       return res.status(404).json(ApiResponse.error("Prop bet not found"));
     }
+
+    console.log(`[PICKS] Prop bet ${status}:`, {
+      propBetId,
+      status,
+      adminUserId,
+      user: updatedPick.user,
+    });
 
     return res.status(200).json(ApiResponse.success(updatedPick));
   } catch (error) {
@@ -905,11 +982,16 @@ export const createTestPropBet = async (req: Request, res: Response) => {
       selections: { test_game: "TEST" },
       propBet: "Test prop bet - Over 100 yards",
       propBetOdds: "+150",
+      propBetStatus: 'pending', // Include the new status field
       isFinalized: true,
     });
 
     const saved = await testPick.save();
-    console.log("[TEST] Test prop bet created:", saved._id);
+    console.log("[TEST] Test prop bet created:", {
+      _id: saved._id,
+      propBet: saved.propBet,
+      propBetStatus: saved.propBetStatus
+    });
 
     return res.status(200).json(ApiResponse.success(saved));
   } catch (error) {
@@ -917,5 +999,61 @@ export const createTestPropBet = async (req: Request, res: Response) => {
     return res
       .status(500)
       .json(ApiResponse.error("Failed to create test prop bet"));
+  }
+};
+
+// Debug endpoint to check prop bet status
+export const debugPropBetStatus = async (req: Request, res: Response) => {
+  try {
+    console.log("[DEBUG] Checking prop bet status...");
+    
+    const allPicks = await Pick.find({ propBet: { $exists: true, $ne: "" } }).lean();
+    console.log("[DEBUG] Found picks with prop bets:", allPicks.length);
+    
+    const propBetStatuses = allPicks.map(pick => ({
+      _id: pick._id,
+      propBet: pick.propBet,
+      propBetStatus: pick.propBetStatus,
+      propBetOdds: pick.propBetOdds,
+      isFinalized: pick.isFinalized,
+      createdAt: pick.createdAt
+    }));
+    
+    return res.status(200).json(ApiResponse.success({
+      total: allPicks.length,
+      propBets: propBetStatuses
+    }));
+  } catch (error) {
+    console.error("[DEBUG] Error checking prop bet status:", error);
+    return res.status(500).json(ApiResponse.error("Failed to check prop bet status"));
+  }
+};
+
+// Get used TD scorers for a user this season
+export const getUsedTdScorers = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?._id as string;
+    const currentSeason = 2024; // You might want to make this dynamic based on current year
+
+    const usedScorers = await UsedTdScorer.find({
+      user: userId,
+      season: currentSeason,
+    }).lean();
+
+    const playerIds = usedScorers.map((usage) => usage.playerId);
+    
+    console.log("[PICKS] Retrieved used TD scorers", {
+      userId,
+      season: currentSeason,
+      count: playerIds.length,
+      playerIds,
+    });
+
+    return res.status(200).json(ApiResponse.success(playerIds));
+  } catch (error) {
+    console.error("[PICKS] Error fetching used TD scorers:", error);
+    return res
+      .status(500)
+      .json(ApiResponse.error("Failed to fetch used TD scorers"));
   }
 };

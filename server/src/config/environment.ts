@@ -12,6 +12,13 @@ const required = [
   "RAPIDAPI_HOST",
 ] as const;
 
+const optional = [
+  "EMAIL_USER",
+  "EMAIL_APP_PASSWORD",
+  "EMAIL_FROM",
+  "CLIENT_URL",
+] as const;
+
 for (const key of required) {
   if (!process.env[key]) {
     throw new Error(`Missing required environment variable: ${key}`);
@@ -27,3 +34,10 @@ export const {
   RAPIDAPI_KEY,
   RAPIDAPI_HOST,
 } = process.env as Record<(typeof required)[number], string>;
+
+export const {
+  EMAIL_USER,
+  EMAIL_APP_PASSWORD,
+  EMAIL_FROM,
+  CLIENT_URL,
+} = process.env as Record<(typeof optional)[number], string | undefined>;

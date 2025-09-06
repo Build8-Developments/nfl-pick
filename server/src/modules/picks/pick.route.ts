@@ -12,6 +12,8 @@ import {
   updatePropBetStatus,
   debugAllPicks,
   createTestPropBet,
+  debugPropBetStatus,
+  getUsedTdScorers,
 } from "./pick.controller.js";
 import { rateLimit } from "../../middlewares/rateLimit.middleware.js";
 
@@ -22,6 +24,7 @@ pickRouter.use(protect);
 // IMPORTANT: Register specific routes before generic parameter routes
 pickRouter.get("/all/:week", asyncHandler(getAllPicksByWeek));
 pickRouter.get("/weeks", asyncHandler(getWeeksWithFinalizedPicks));
+pickRouter.get("/used-td-scorers", asyncHandler(getUsedTdScorers));
 
 // Query by ?week=3&userId=... (userId optional, defaults to authenticated user)
 pickRouter.get("/", asyncHandler(getPickByQuery));
@@ -52,5 +55,8 @@ pickRouter.get("/debug", protectAdmin, asyncHandler(debugAllPicks));
 
 // Test route (admin only)
 pickRouter.post("/test-prop-bet", protectAdmin, asyncHandler(createTestPropBet));
+
+// Debug route (admin only)
+pickRouter.get("/debug-prop-bet-status", protectAdmin, asyncHandler(debugPropBetStatus));
 
 export default pickRouter;

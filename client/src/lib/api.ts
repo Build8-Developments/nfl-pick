@@ -5,7 +5,6 @@ type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export type ApiClientOptions = {
   baseUrl?: string;
-  getToken?: () => string | null | undefined;
   defaultHeaders?: Record<string, string>;
 };
 
@@ -42,12 +41,10 @@ const buildQueryString = (query?: ApiRequestOptions["query"]) => {
 
 export class ApiClient {
   private baseUrl: string;
-  private getToken?: ApiClientOptions["getToken"];
   private defaultHeaders: Record<string, string>;
 
   constructor(options: ApiClientOptions = {}) {
     this.baseUrl = resolveBaseUrl(options.baseUrl);
-    this.getToken = options.getToken;
     this.defaultHeaders = options.defaultHeaders ?? {
       "Content-Type": "application/json",
     };
@@ -58,18 +55,17 @@ export class ApiClient {
     options: ApiRequestOptions = {}
   ): Promise<TResponse> {
     const url = this.composeUrl(path, options.query);
-    const token = this.getToken?.();
     const headers: Record<string, string> = {
       ...this.defaultHeaders,
       ...(options.headers ?? {}),
     };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
 
     const method: HttpMethod = options.method ?? "GET";
     const fetchInit: RequestInit = {
       method,
       headers,
       signal: options.signal,
+      credentials: "include", // Include cookies in requests
     };
     if (options.body !== undefined && method !== "GET") {
       // If body is FormData, let the browser set the correct Content-Type with boundary
@@ -169,14 +165,7 @@ export class ApiClient {
 
 // Singleton instance for app usage
 export const apiClient = new ApiClient({
-  getToken: () => {
-    try {
-      const raw = localStorage.getItem("auth-token");
-      return raw ?? null;
-    } catch {
-      return null;
-    }
-  },
+  // No need for token-based auth since we're using session cookies
 });
 
 // Origin (protocol + host + port) of the API, useful for resolving absolute asset URLs

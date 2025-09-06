@@ -13,6 +13,9 @@ export interface IPick extends Document {
   status?: string; // e.g., PENDING, SETTLED
   propBetResolved?: boolean;
   propBetCorrect?: boolean;
+  propBetStatus?: 'pending' | 'approved' | 'rejected'; // New approval status
+  propBetApprovedAt?: Date; // When it was approved/rejected
+  propBetApprovedBy?: mongoose.Types.ObjectId; // Who approved/rejected it
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -31,6 +34,13 @@ const PickSchema = new Schema<IPick>(
     status: { type: String, default: "PENDING" },
     propBetResolved: { type: Boolean, default: false },
     propBetCorrect: { type: Boolean, default: false },
+    propBetStatus: { 
+      type: String, 
+      enum: ['pending', 'approved', 'rejected'], 
+      default: 'pending' 
+    },
+    propBetApprovedAt: { type: Date },
+    propBetApprovedBy: { type: Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true, collection: "picks" }
 );

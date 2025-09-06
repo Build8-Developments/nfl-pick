@@ -56,6 +56,7 @@ const Picks = () => {
   const [touchdownScorer, setTouchdownScorer] = useState("");
   const [propBet, setPropBet] = useState("");
   const [propBetOdds, setPropBetOdds] = useState("");
+  const [propBetStatus, setPropBetStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [playerSearchOpen, setPlayerSearchOpen] = useState(false);
@@ -72,6 +73,7 @@ const Picks = () => {
   const [, setPlayersLoading] = useState(false);
   const [, setPlayersError] = useState<string | null>(null);
   const [, setIsGamesLoading] = useState(true);
+  const [usedTdScorers, setUsedTdScorers] = useState<string[]>([]);
   const isHydratingRef = useRef(false);
 
   type BettingOddsResponse = {
@@ -130,6 +132,32 @@ const Picks = () => {
       });
   }, [games, teamIdToTeam, selectedWeek]);
 
+  // Load used TD scorers for the current user
+  useEffect(() => {
+    if (!currentUser) return;
+    let active = true;
+    
+    apiClient
+      .get<{
+        success: boolean;
+        data?: string[];
+      }>("picks/used-td-scorers")
+      .then((res) => {
+        if (!active) return;
+        const usedScorers = res?.data || [];
+        setUsedTdScorers(usedScorers);
+        console.log("[PICKS] Loaded used TD scorers:", usedScorers);
+      })
+      .catch((err) => {
+        console.error("[PICKS] Error loading used TD scorers:", err);
+        setUsedTdScorers([]);
+      });
+    
+    return () => {
+      active = false;
+    };
+  }, [currentUser]);
+
   // Load user's saved picks for selectedWeek
   useEffect(() => {
     if (!currentUser || !selectedWeek) return;
@@ -144,6 +172,7 @@ const Picks = () => {
           touchdownScorer?: string;
           propBet?: string;
           propBetOdds?: string;
+          propBetStatus?: string;
           isFinalized?: boolean;
         } | null;
       }>(`picks/${selectedWeek}`)
@@ -157,6 +186,7 @@ const Picks = () => {
           setTouchdownScorer(data.touchdownScorer || "");
           setPropBet(data.propBet || "");
           setPropBetOdds(data.propBetOdds || "");
+          setPropBetStatus(data.propBetStatus || null);
           setHasSubmitted(Boolean(data.isFinalized));
         } else {
           setPicks({});
@@ -164,6 +194,7 @@ const Picks = () => {
           setTouchdownScorer("");
           setPropBet("");
           setPropBetOdds("");
+          setPropBetStatus(null);
           setHasSubmitted(false);
         }
       })
@@ -381,6 +412,10 @@ const Picks = () => {
     playerName: string
   ) => {
     if (!canEditPicks()) return;
+    if (usedTdScorers.includes(playerId)) {
+      alert(`You have already used ${playerName} as a TD scorer this season. Each player can only be selected once per season.`);
+      return;
+    }
     setTouchdownScorer(playerId);
     setPlayerSearchValue(playerName);
     setPlayerSearchOpen(false);
@@ -924,23 +959,31 @@ const Picks = () => {
                     <CommandEmpty>No players found.</CommandEmpty>
                     <CommandGroup>
                       {players.slice(0, 20).map((player) => {
+                        const isUsed = usedTdScorers.includes(String(player.playerID));
+                        const isSelected = touchdownScorer === String(player.playerID);
+                        
                         return (
                           <CommandItem
                             key={player.playerID}
                             value={player.longName}
-                            className="flex justify-between items-center"
-                            onSelect={() =>
+                            className={`flex justify-between items-center ${
+                              isUsed && !isSelected ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
+                            onSelect={() => {
+                              if (isUsed && !isSelected) {
+                                alert(`You have already used ${player.longName} as a TD scorer this season. Each player can only be selected once per season.`);
+                                return;
+                              }
                               handleTouchdownScorerSelect(
                                 player.playerID,
                                 player.longName as string
-                              )
-                            }
+                              );
+                            }}
+                            disabled={isUsed && !isSelected}
                           >
                             <Check
                               className={`mr-2 h-4 w-4 ${
-                                touchdownScorer === String(player.playerID)
-                                  ? "opacity-100"
-                                  : "opacity-0"
+                                isSelected ? "opacity-100" : "opacity-0"
                               }`}
                             />
                             <div className="flex items-center justify-start w-full">
@@ -953,8 +996,13 @@ const Picks = () => {
                                   />
                                 )}
 
-                                <span className="text-sm w-full">
+                                <span className={`text-sm w-full ${isUsed && !isSelected ? "line-through" : ""}`}>
                                   {player.longName}
+                                  {isUsed && !isSelected && (
+                                    <span className="text-xs text-muted-foreground ml-2">
+                                      (Used this season)
+                                    </span>
+                                  )}
                                 </span>
 
                                 <div className="flex gap-2 font-medium w-[20%] justify-end">
@@ -987,6 +1035,39 @@ const Picks = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className={!canEditPicks() ? "opacity-60" : undefined}>
+          {/* Prop Bet Status Indicator */}
+          {propBet && propBetStatus && (
+            <div className={`mb-4 p-3 rounded-lg border ${
+              propBetStatus === 'approved' ? 'bg-green-50 border-green-200' :
+              propBetStatus === 'rejected' ? 'bg-red-50 border-red-200' :
+              'bg-yellow-50 border-yellow-200'
+            }`}>
+              <div className="flex items-center gap-2">
+                {propBetStatus === 'approved' ? (
+                  <>
+                    <Check className="h-5 w-5 text-green-600" />
+                    <span className="font-medium text-green-800">Prop Bet Approved!</span>
+                  </>
+                ) : propBetStatus === 'rejected' ? (
+                  <>
+                    <X className="h-5 w-5 text-red-600" />
+                    <span className="font-medium text-red-800">Prop Bet Rejected</span>
+                  </>
+                ) : (
+                  <>
+                    <Clock className="h-5 w-5 text-yellow-600" />
+                    <span className="font-medium text-yellow-800">Prop Bet Pending Approval</span>
+                  </>
+                )}
+              </div>
+              <p className="text-sm mt-1 text-muted-foreground">
+                "{propBet}" {propBetStatus === 'pending' ? 'is waiting for admin review' : 
+                propBetStatus === 'approved' ? 'has been approved and is now live' : 
+                'was rejected by admin'}
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="propBet">Prop Bet Description</Label>
             <Input
@@ -1010,7 +1091,7 @@ const Picks = () => {
             />
             <p className="text-xs text-muted-foreground">
               Describe your prop bet clearly and provide the odds (e.g., +190,
-              -150).
+              -150). Your prop bet will be reviewed by an admin before going live.
             </p>
           </div>
         </CardContent>

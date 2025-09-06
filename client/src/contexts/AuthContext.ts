@@ -27,7 +27,9 @@ export type AuthContextValue = {
     { success: true; user: User } | { success: false; error: string }
   >;
   devLoginMock: (user: User) => void;
-  logout: () => void;
+  logout: () => Promise<
+    { success: true } | { success: false; error: string }
+  >;
   isLoading: boolean;
 };
 

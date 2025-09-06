@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -36,7 +37,8 @@ import { memCache } from "@/lib/memCache";
 import { useAuth } from "../contexts/useAuth";
 
 const LivePicks = () => {
-  useAuth();
+  const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("spreads");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [justUpdated, setJustUpdated] = useState(false);
@@ -62,12 +64,20 @@ const LivePicks = () => {
     updatedAt?: string;
   };
   const [allPicks, setAllPicks] = useState<BackendPick[]>([]);
+  const [currentUserPicks, setCurrentUserPicks] = useState<BackendPick | null>(null);
   const [hasCurrentUserSubmitted, setHasCurrentUserSubmitted] = useState(false);
   const [oddsByGameId, setOddsByGameId] = useState<
     Record<string, { awayTeamSpread?: string; homeTeamSpread?: string }>
   >({});
   const isFetchingRef = useRef(false);
   const lastFetchAtRef = useRef(0);
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!currentUser) {
+      navigate("/login");
+    }
+  }, [currentUser, navigate]);
 
   const parseGameDateTime = (gameDate: string, gameTime: string) => {
     const yyyy = Number(gameDate.slice(0, 4));
@@ -105,6 +115,12 @@ const LivePicks = () => {
       try {
         setLoading(true);
         setError(null);
+
+        // Don't load data if user is not authenticated
+        if (!currentUser) {
+          setLoading(false);
+          return;
+        }
 
         // Check cache first
         const cachedTeams = memCache.get<ITeam[]>("teams");
@@ -321,11 +337,11 @@ const LivePicks = () => {
     };
 
     loadData();
-  }, []);
+  }, [currentUser]); // Load data when user authentication changes
 
   // Load current user's picks to check if they've submitted
   useEffect(() => {
-    if (!selectedWeek) return;
+    if (!selectedWeek || !currentUser) return;
     let active = true;
     apiClient
       .get<{ success?: boolean; data?: BackendPick | null }>(
@@ -334,17 +350,19 @@ const LivePicks = () => {
       .then((res) => {
         if (!active) return;
         const userPicks = res?.data;
+        setCurrentUserPicks(userPicks || null);
         setHasCurrentUserSubmitted(Boolean(userPicks?.isFinalized));
       })
       .catch((err) => {
         console.error("Error loading current user picks:", err);
         if (!active) return;
+        setCurrentUserPicks(null);
         setHasCurrentUserSubmitted(false);
       });
     return () => {
       active = false;
     };
-  }, [selectedWeek]);
+  }, [selectedWeek, currentUser]);
 
   // Load all users' finalized picks for selected week
   useEffect(() => {
@@ -583,12 +601,12 @@ const LivePicks = () => {
     },
     [players]
   );
-  const getPlayerHeadshot = (player: IPlayer | undefined) => {
+  const getPlayerHeadshot = useCallback((player: IPlayer | undefined) => {
     if (!player) return null;
     if (player.espnHeadshot && player.espnHeadshot.trim() !== "")
       return player.espnHeadshot;
     return `https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=100&h=100&fit=crop&crop=face`;
-  };
+  }, []);
 
   // Transform backend picks for display using real data (no mocks)
   type DisplayUserPicks = {
@@ -603,7 +621,7 @@ const LivePicks = () => {
       playerHeadshot: string | null;
       isCorrect: boolean;
     };
-    propBet: { description: string; isCorrect: boolean };
+    propBet: { description: string; isCorrect: boolean; status: string };
     totalPoints: number;
   };
 
@@ -616,9 +634,22 @@ const LivePicks = () => {
       return !Number.isNaN(weekNum) && weekNum === selectedWeek;
     });
 
+    // First, load any cached odds
+    const cachedOdds: Record<string, { awayTeamSpread?: string; homeTeamSpread?: string }> = {};
+    currentWeekGames.forEach((game) => {
+      const cached = memCache.get(`odds:${game.gameID}`);
+      if (cached) {
+        cachedOdds[game.gameID] = cached;
+      }
+    });
+    
+    if (Object.keys(cachedOdds).length > 0) {
+      setOddsByGameId((prev) => ({ ...prev, ...cachedOdds }));
+    }
+
     // Only fetch odds for games we don't already have
     const gamesToFetch = currentWeekGames.filter(
-      (game) => !oddsByGameId[game.gameID]
+      (game) => !memCache.get(`odds:${game.gameID}`)
     );
 
     if (gamesToFetch.length === 0) return;
@@ -631,9 +662,6 @@ const LivePicks = () => {
 
         while (retryCount <= maxRetries) {
           try {
-            console.log(
-              `[LIVE PICKS] Fetching odds for game ${game.gameID}...`
-            );
             const res = await apiClient.get<{
               success: boolean;
               data?: {
@@ -641,27 +669,17 @@ const LivePicks = () => {
               };
             }>(`betting-odds/${encodeURIComponent(game.gameID)}`);
 
-            console.log(
-              `[LIVE PICKS] Raw response for game ${game.gameID}:`,
-              res
-            );
-
             // Check if response exists and has data with odds
             if (res && res.data && res.data.odds) {
-              console.log(
-                `[LIVE PICKS] Fetched odds for game ${game.gameID}:`,
-                res.data.odds
-              );
+              const oddsData = res.data.odds;
               setOddsByGameId((prev) => ({
                 ...prev,
-                [game.gameID]: res.data!.odds!,
+                [game.gameID]: oddsData,
               }));
+              // Cache the odds to prevent refetching
+              memCache.set(`odds:${game.gameID}`, oddsData);
               break; // Success, exit retry loop
             } else {
-              console.log(
-                `[LIVE PICKS] No odds data for game ${game.gameID}:`,
-                res
-              );
               // No odds data available, don't retry
               break;
             }
@@ -691,11 +709,28 @@ const LivePicks = () => {
     };
 
     fetchOdds();
-  }, [selectedWeek, games, oddsByGameId]);
+  }, [selectedWeek, games]);
 
   const transformedPicks = useMemo<DisplayUserPicks[]>(() => {
-    // Only show other users' picks if current user has submitted
-    const base = hasCurrentUserSubmitted ? (allPicks ? [...allPicks] : []) : [];
+    // Include current user's picks if they exist, plus other users' picks if current user has submitted
+    const base: BackendPick[] = [];
+    
+    // Add current user's picks if they exist
+    if (currentUserPicks) {
+      base.push(currentUserPicks);
+    }
+    
+    // Add other users' picks if current user has submitted
+    if (hasCurrentUserSubmitted && allPicks) {
+      // Filter out current user's picks from allPicks to avoid duplicates
+      const otherPicks = allPicks.filter(pick => {
+        const userId = typeof pick.user === "string" ? pick.user : pick.user?._id;
+        const currentUserId = typeof currentUserPicks?.user === "string" ? currentUserPicks.user : currentUserPicks?.user?._id;
+        return userId !== currentUserId;
+      });
+      base.push(...otherPicks);
+    }
+    
     if (base.length === 0) return [];
     return base.map((p: BackendPick): DisplayUserPicks => {
       const outcomesArray = Object.entries(p.selections || {}).map(
@@ -708,12 +743,20 @@ const LivePicks = () => {
         typeof p.user === "string" ? p.user : p.user?._id || "unknown";
       const userName =
         typeof p.user === "string" ? "User" : p.user?.username || "User";
-      const userAvatar =
-        typeof p.user === "string"
-          ? getUserAvatar("U")
-          : p.user?.avatar
-          ? `http://localhost:3000${p.user.avatar}`
-          : getUserAvatar(userName || "U");
+      const userAvatar = (() => {
+        if (typeof p.user === "string") {
+          // If user is just an ID string, try to find the user in our users list
+          const foundUser = users.find(u => u._id === p.user);
+          if (foundUser?.avatar) {
+            return `http://localhost:3000${foundUser.avatar}`;
+          }
+          return getUserAvatar("Unknown User");
+        } else if (p.user?.avatar) {
+          return `http://localhost:3000${p.user.avatar}`;
+        } else {
+          return getUserAvatar(userName || "Unknown User");
+        }
+      })();
       return {
         userId,
         userName,
@@ -732,13 +775,19 @@ const LivePicks = () => {
             getPlayerHeadshot(getPlayerById(p.touchdownScorer || "")),
           isCorrect: false,
         },
-        propBet: { description: p.propBet || "", isCorrect: false },
+        propBet: { 
+          description: p.propBet || "", 
+          isCorrect: false,
+          status: p.propBetStatus || 'pending'
+        },
         totalPoints: 0,
       };
     });
   }, [
     allPicks,
+    currentUserPicks,
     getPlayerById,
+    getPlayerHeadshot,
     getUserAvatar,
     playerData,
     hasCurrentUserSubmitted,
@@ -746,17 +795,22 @@ const LivePicks = () => {
 
   // Fetch player data for TD scorers when picks are loaded
   useEffect(() => {
-    if (allPicks.length > 0) {
-      allPicks.forEach((pick) => {
+    const allPicksToProcess = [...allPicks];
+    if (currentUserPicks) {
+      allPicksToProcess.push(currentUserPicks);
+    }
+    
+    if (allPicksToProcess.length > 0) {
+      allPicksToProcess.forEach((pick) => {
         if (pick.touchdownScorer) {
           fetchPlayerData(pick.touchdownScorer);
         }
       });
     }
-  }, [allPicks, fetchPlayerData]);
+  }, [allPicks, currentUserPicks, fetchPlayerData]);
 
   // Helper function to get team logo
-  const getTeamLogo = (teamAbv: string) => {
+  const getTeamLogo = useCallback((teamAbv: string) => {
     const team = teams.find((t) => t.teamAbv === teamAbv);
     if (team?.espnLogo1) {
       return team.espnLogo1;
@@ -766,7 +820,7 @@ const LivePicks = () => {
     }
     // Fallback to a generic NFL logo
     return "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=100&h=100&fit=crop&crop=face";
-  };
+  }, [teams]);
 
   const getOutcomeIcon = (isCorrect: boolean) => {
     return isCorrect ? (
@@ -775,6 +829,18 @@ const LivePicks = () => {
       <X className="h-6 w-6 text-red-500" />
     );
   };
+
+  // Function to check if a game is finished
+  const isGameFinished = (gameDate: string, gameTime: string) => {
+    const gameDateTime = parseGameDateTime(gameDate, gameTime);
+    const now = new Date();
+    const bufferMinutes = 15; // 15 minutes after game start
+    const cutoffTime = new Date(
+      gameDateTime.getTime() + bufferMinutes * 60 * 1000
+    );
+    return now > cutoffTime;
+  };
+
 
   return (
     <div className="space-y-6">
@@ -849,14 +915,13 @@ const LivePicks = () => {
       {/* No Data State */}
       {!loading && transformedPicks.length === 0 && (
         <div className="text-center py-8">
-          {!hasCurrentUserSubmitted ? (
+          {!currentUserPicks ? (
             <div className="space-y-4">
               <p className="text-muted-foreground text-lg font-medium">
-                Submit your picks to see other players' picks
+                No picks found for this week
               </p>
               <p className="text-muted-foreground">
-                Once you submit your picks for this week, you'll be able to see
-                how other players are doing.
+                Make your picks to get started!
               </p>
               <Button
                 onClick={() => (window.location.href = "/picks")}
@@ -886,22 +951,35 @@ const LivePicks = () => {
           <CardContent>
             {/* Header avatars aligned with columns */}
             <div className="grid grid-cols-3 gap-3 mb-4">
-              {transformedPicks.map((user) => (
-                <div
-                  key={user.userId}
-                  className="flex items-center justify-center"
-                >
-                  <img
-                    src={user.userAvatar}
-                    alt={user.userName}
-                    className="w-12 h-12 rounded-full object-cover border-2 border-primary shadow"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.src = getUserAvatar(user.userName);
-                    }}
-                  />
-                </div>
-              ))}
+              {transformedPicks.map((user) => {
+                const isCurrentUser = currentUserPicks && (
+                  (typeof currentUserPicks.user === "string" ? currentUserPicks.user : currentUserPicks.user?._id) === user.userId
+                );
+                
+                return (
+                  <div
+                    key={user.userId}
+                    className="flex flex-col items-center justify-center"
+                  >
+                    <img
+                      src={user.userAvatar}
+                      alt={user.userName}
+                      className={`w-12 h-12 rounded-full object-cover border-2 shadow ${
+                        isCurrentUser ? "border-yellow-400 ring-2 ring-yellow-400" : "border-primary"
+                      }`}
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = getUserAvatar(user.userName);
+                      }}
+                    />
+                    {isCurrentUser && (
+                      <span className="text-xs font-bold text-yellow-600 mt-1">
+                        YOU
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Game rows: each cell shows the user's pick for that match */}
@@ -949,17 +1027,6 @@ const LivePicks = () => {
                               homeSpread && homeSpread.startsWith("-")
                             );
 
-                            // Debug logging
-                            console.log(
-                              `[LIVE PICKS] Game ${game.gameID} odds:`,
-                              {
-                                awaySpread,
-                                homeSpread,
-                                awayIsFavorite,
-                                homeIsFavorite,
-                                odds,
-                              }
-                            );
 
                             return (
                               <div className="mb-3 p-3 bg-gradient-to-r from-muted/30 to-muted/50 rounded-lg border">
@@ -1075,11 +1142,16 @@ const LivePicks = () => {
           <CardContent>
             <div className="grid grid-cols-3 gap-3">
               {transformedPicks.map((user) => {
+                const isCurrentUser = currentUserPicks && (
+                  (typeof currentUserPicks.user === "string" ? currentUserPicks.user : currentUserPicks.user?._id) === user.userId
+                );
                 const teamLogo = getTeamLogo(user.lock.team);
                 return (
                   <div
                     key={user.userId}
-                    className="bg-white text-black p-4 rounded-lg text-center font-bold text-sm relative shadow-lg border-2 border-gray-300"
+                    className={`bg-white text-black p-4 rounded-lg text-center font-bold text-sm relative shadow-lg border-2 ${
+                      isCurrentUser ? "border-yellow-400 ring-2 ring-yellow-400" : "border-gray-300"
+                    }`}
                   >
                     <div className="flex flex-col items-center gap-2">
                       <img
@@ -1094,7 +1166,12 @@ const LivePicks = () => {
                       <span className="text-sm font-bold">
                         {user.lock.team}
                       </span>
-                      <div className="text-xs opacity-75">{user.userName}</div>
+                      <div className="text-xs opacity-75">
+                        {user.userName}
+                        {isCurrentUser && (
+                          <span className="text-yellow-600 font-bold ml-1">(YOU)</span>
+                        )}
+                      </div>
                     </div>
                     {user.lock.isCorrect && (
                       <div className="absolute -top-2 -right-2">
@@ -1125,107 +1202,205 @@ const LivePicks = () => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-3 gap-4">
-              {transformedPicks.map((user) => (
-                <div key={user.userId} className="text-center">
-                  <div className="relative bg-card rounded-lg p-3 shadow-md border border-border">
-                    <div className="flex flex-col items-center gap-2">
-                      {user.tdScorer.playerHeadshot ? (
-                        <img
-                          src={user.tdScorer.playerHeadshot}
-                          alt={user.tdScorer.player}
-                          className="w-16 h-16 rounded-full object-cover border-3 border-border shadow-md"
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.src = getUserAvatar(user.userName);
-                          }}
-                        />
-                      ) : (
-                        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center text-2xl shadow-md">
-                          🏈
+              {transformedPicks.map((user) => {
+                const isCurrentUser = currentUserPicks && (
+                  (typeof currentUserPicks.user === "string" ? currentUserPicks.user : currentUserPicks.user?._id) === user.userId
+                );
+                
+                return (
+                  <div key={user.userId} className="text-center">
+                    <div className={`relative bg-card rounded-lg p-3 shadow-md border ${
+                      isCurrentUser ? "border-yellow-400 ring-2 ring-yellow-400" : "border-border"
+                    }`}>
+                      <div className="flex flex-col items-center gap-2">
+                        {user.tdScorer.playerHeadshot ? (
+                          <img
+                            src={user.tdScorer.playerHeadshot}
+                            alt={user.tdScorer.player}
+                            className="w-16 h-16 rounded-full object-cover border-3 border-border shadow-md"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.src = getUserAvatar(user.userName);
+                            }}
+                          />
+                        ) : (
+                          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center text-2xl shadow-md">
+                            🏈
+                          </div>
+                        )}
+                        <div className="text-center">
+                          <p className="text-sm font-bold text-foreground">
+                            {user.tdScorer.player}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {user.userName}
+                            {isCurrentUser && (
+                              <span className="text-yellow-600 font-bold ml-1">(YOU)</span>
+                            )}
+                          </p>
                         </div>
-                      )}
-                      <div className="text-center">
-                        <p className="text-sm font-bold text-foreground">
-                          {user.tdScorer.player}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {user.userName}
-                        </p>
+                      </div>
+                      <div className="absolute -top-2 -right-2">
+                        {(() => {
+                          // Find the game for this week to check if it's finished
+                          const currentWeekGames = games.filter((g) => {
+                            const weekNum = Number(g.gameWeek.match(/\d+/)?.[0] ?? NaN);
+                            return !Number.isNaN(weekNum) && weekNum === selectedWeek;
+                          });
+                          
+                          // For now, we'll assume the game is finished if we have any games for this week
+                          // In a real implementation, you'd check the specific game time
+                          const gameFinished = currentWeekGames.length > 0 && 
+                            currentWeekGames.some(game => isGameFinished(game.gameDate as string, game.gameTime as string));
+                          
+                          if (!gameFinished) {
+                            // Game not finished yet, don't show outcome
+                            return null;
+                          }
+                          
+                          // Game is finished, show the outcome
+                          return user.tdScorer.isCorrect ? (
+                            <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
+                              <Check className="h-4 w-4 text-white" />
+                            </div>
+                          ) : (
+                            <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg">
+                              <X className="h-4 w-4 text-white" />
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
-                    <div className="absolute -top-2 -right-2">
-                      {user.tdScorer.isCorrect ? (
-                        <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
-                          <Check className="h-4 w-4 text-white" />
-                        </div>
-                      ) : (
-                        <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg">
-                          <X className="h-4 w-4 text-white" />
-                        </div>
-                      )}
-                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
       )}
 
       {/* Prop Bet */}
-      {!loading && transformedPicks.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Prop Bet
-            </CardTitle>
-            <CardDescription>
-              Custom proposition bets from players
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {transformedPicks.map((user) => (
-                <div key={user.userId} className="relative">
-                  <div className="bg-card p-4 rounded-lg shadow-md border border-border">
-                    <div className="flex items-center gap-3">
-                      <img
-                        src={user.userAvatar}
-                        alt={user.userName}
-                        className="w-8 h-8 rounded-full object-cover border-2 border-border"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.src = getUserAvatar(user.userName);
-                        }}
-                      />
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-foreground">
-                          {user.propBet.description || "—"}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {user.userName}
-                        </p>
-                      </div>
+      {!loading && transformedPicks.length > 0 && (() => {
+        // Filter to only show users with approved prop bets
+        const usersWithApprovedProps = transformedPicks.filter(user => 
+          user.propBet.description && user.propBet.status === 'approved'
+        );
+        
+        // Check if current user has a pending prop bet
+        const currentUserPendingProp = transformedPicks.find(user => {
+          const isCurrentUser = currentUserPicks && (
+            (typeof currentUserPicks.user === "string" ? currentUserPicks.user : currentUserPicks.user?._id) === user.userId
+          );
+          return isCurrentUser && user.propBet.description && user.propBet.status === 'pending';
+        });
+
+        // Debug logging
+        console.log("[LIVE PICKS] Prop bet debug:", {
+          totalUsers: transformedPicks.length,
+          usersWithApprovedProps: usersWithApprovedProps.length,
+          currentUserPendingProp: !!currentUserPendingProp,
+          allPropBets: transformedPicks.map(u => ({
+            user: u.userName,
+            propBet: u.propBet.description,
+            status: u.propBet.status
+          }))
+        });
+
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Prop Bet
+              </CardTitle>
+              <CardDescription>
+                {usersWithApprovedProps.length > 0 
+                  ? "Approved proposition bets from players" 
+                  : "No approved prop bets yet"
+                }
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {/* Show pending prop bet message for current user */}
+              {currentUserPendingProp && (
+                <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-yellow-600" />
+                    <div>
+                      <p className="font-medium text-yellow-800">Your Prop Bet is Pending Approval</p>
+                      <p className="text-sm text-yellow-700">
+                        "{currentUserPendingProp.propBet.description}" is waiting for admin approval.
+                      </p>
                     </div>
                   </div>
-                  <div className="absolute -top-2 -right-2">
-                    {user.propBet.isCorrect ? (
-                      <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
-                        <Check className="h-4 w-4 text-white" />
-                      </div>
-                    ) : (
-                      <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg">
-                        <X className="h-4 w-4 text-white" />
-                      </div>
-                    )}
-                  </div>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              )}
+
+              {usersWithApprovedProps.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {usersWithApprovedProps.map((user) => {
+                    const isCurrentUser = currentUserPicks && (
+                      (typeof currentUserPicks.user === "string" ? currentUserPicks.user : currentUserPicks.user?._id) === user.userId
+                    );
+                    
+                    return (
+                      <div key={user.userId} className="relative">
+                        <div className={`bg-card p-4 rounded-lg shadow-md border ${
+                          isCurrentUser ? "border-yellow-400 ring-2 ring-yellow-400" : "border-border"
+                        }`}>
+                          <div className="flex flex-col items-center gap-3 text-center">
+                            <img
+                              src={user.userAvatar}
+                              alt={user.userName}
+                              className="w-12 h-12 rounded-full object-cover border-2 border-border"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.src = getUserAvatar(user.userName);
+                              }}
+                            />
+                            <div className="w-full">
+                              <p className="text-sm font-semibold text-foreground mb-2">
+                                {user.propBet.description}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {user.userName}
+                                {isCurrentUser && (
+                                  <span className="text-yellow-600 font-bold ml-1">(YOU)</span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        {/* Only show outcome if admin has marked it as correct/incorrect */}
+                        {user.propBet.isCorrect !== undefined && (
+                          <div className="absolute -top-2 -right-2">
+                            {user.propBet.isCorrect ? (
+                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
+                                <Check className="h-4 w-4 text-white" />
+                              </div>
+                            ) : (
+                              <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg">
+                                <X className="h-4 w-4 text-white" />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">
+                    No approved prop bets yet. Check back after admin approval!
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Total Points */}
       {!loading && transformedPicks.length > 0 && (
@@ -1240,6 +1415,9 @@ const LivePicks = () => {
           <CardContent>
             <div className="grid grid-cols-3 gap-4">
               {transformedPicks.map((user, index) => {
+                const isCurrentUser = currentUserPicks && (
+                  (typeof currentUserPicks.user === "string" ? currentUserPicks.user : currentUserPicks.user?._id) === user.userId
+                );
                 const isLeader = index === 0; // First user is leader
                 return (
                   <div key={user.userId} className="text-center">
@@ -1247,9 +1425,15 @@ const LivePicks = () => {
                       className={`${
                         isLeader
                           ? "bg-black text-white shadow-lg scale-105"
+                          : isCurrentUser
+                          ? "bg-yellow-100 text-black shadow-lg scale-105"
                           : "bg-white text-black shadow-md"
                       } p-4 rounded-lg text-2xl font-bold mb-3 border-2 ${
-                        isLeader ? "border-black" : "border-gray-300"
+                        isLeader 
+                          ? "border-black" 
+                          : isCurrentUser 
+                          ? "border-yellow-400" 
+                          : "border-gray-300"
                       }`}
                     >
                       {user.totalPoints}
@@ -1261,6 +1445,8 @@ const LivePicks = () => {
                         className={`w-10 h-10 rounded-full object-cover border-3 ${
                           isLeader
                             ? "border-yellow-400 shadow-lg"
+                            : isCurrentUser
+                            ? "border-yellow-400 shadow-lg"
                             : "border-border"
                         }`}
                         onError={(e) => {
@@ -1271,10 +1457,18 @@ const LivePicks = () => {
                       <div className="text-center">
                         <p className="text-sm font-bold text-foreground">
                           {user.userName}
+                          {isCurrentUser && (
+                            <span className="text-yellow-600 font-bold ml-1">(YOU)</span>
+                          )}
                         </p>
-                        {isLeader && (
+                        {isLeader && !isCurrentUser && (
                           <p className="text-xs text-yellow-600 font-semibold">
                             LEADER
+                          </p>
+                        )}
+                        {isLeader && isCurrentUser && (
+                          <p className="text-xs text-yellow-600 font-semibold">
+                            YOU ARE LEADER!
                           </p>
                         )}
                       </div>
@@ -1664,7 +1858,25 @@ const LivePicks = () => {
                                 🏈
                               </div>
                             )}
-                            {getOutcomeIcon(user.tdScorer.isCorrect)}
+                            {(() => {
+                              // Find the game for this week to check if it's finished
+                              const currentWeekGames = games.filter((g) => {
+                                const weekNum = Number(g.gameWeek.match(/\d+/)?.[0] ?? NaN);
+                                return !Number.isNaN(weekNum) && weekNum === selectedWeek;
+                              });
+                              
+                              // For now, we'll assume the game is finished if we have any games for this week
+                              const gameFinished = currentWeekGames.length > 0 && 
+                                currentWeekGames.some(game => isGameFinished(game.gameDate as string, game.gameTime as string));
+                              
+                              if (!gameFinished) {
+                                // Game not finished yet, don't show outcome
+                                return null;
+                              }
+                              
+                              // Game is finished, show the outcome
+                              return getOutcomeIcon(user.tdScorer.isCorrect);
+                            })()}
                             <p className="text-lg font-semibold mt-2">
                               {user.tdScorer.player}
                             </p>
@@ -1682,7 +1894,7 @@ const LivePicks = () => {
                 <CardHeader>
                   <CardTitle>Prop Bets</CardTitle>
                   <CardDescription>
-                    Custom proposition bets from players
+                    Approved proposition bets from players
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1699,37 +1911,52 @@ const LivePicks = () => {
                         No picks data available
                       </p>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {transformedPicks.map((user) => (
-                        <div
-                          key={user.userId}
-                          className="p-4 border rounded-lg relative"
-                        >
-                          <div className="flex items-center gap-3 mb-2">
-                            <img
-                              src={user.userAvatar}
-                              alt={user.userName}
-                              className="w-8 h-8 rounded-full object-cover border-2 border-primary"
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                target.src = getUserAvatar(user.userName);
-                              }}
-                            />
-                            <span className="font-semibold">
-                              {user.userName}
-                            </span>
+                  ) : (() => {
+                    // Filter to only show users with approved prop bets
+                    const usersWithApprovedProps = transformedPicks.filter(user => 
+                      user.propBet.description && user.propBet.status === 'approved'
+                    );
+                    
+                    return usersWithApprovedProps.length > 0 ? (
+                      <div className="space-y-4">
+                        {usersWithApprovedProps.map((user) => (
+                          <div
+                            key={user.userId}
+                            className="p-4 border rounded-lg relative"
+                          >
+                            <div className="flex items-center gap-3 mb-2">
+                              <img
+                                src={user.userAvatar}
+                                alt={user.userName}
+                                className="w-8 h-8 rounded-full object-cover border-2 border-primary"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.src = getUserAvatar(user.userName);
+                                }}
+                              />
+                              <span className="font-semibold">
+                                {user.userName}
+                              </span>
+                            </div>
+                            <div className="bg-muted/50 p-3 rounded-lg">
+                              <p className="font-medium">
+                                {user.propBet.description}
+                              </p>
+                            </div>
+                            {/* Only show outcome if admin has marked it as correct/incorrect */}
+                            {user.propBet.isCorrect !== undefined && getOutcomeIcon(user.propBet.isCorrect)}
                           </div>
-                          <div className="bg-muted/50 p-3 rounded-lg">
-                            <p className="font-medium">
-                              {user.propBet.description}
-                            </p>
-                          </div>
-                          {getOutcomeIcon(user.propBet.isCorrect)}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                        <p className="text-muted-foreground">
+                          No approved prop bets yet. Check back after admin approval!
+                        </p>
+                      </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             </TabsContent>
