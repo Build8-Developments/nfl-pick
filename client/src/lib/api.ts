@@ -20,8 +20,8 @@ export const resolveBaseUrl = (override?: string) => {
   if (override) return ensureTrailingSlash(override);
   const env = import.meta.env.MODE || process.env.NODE_ENV || "development";
   // Use Vite proxy in development, direct URL in production
-  const devUrl = "/api/v1/"; // Vite proxy will handle this
-  const prodUrl = "https://api.blockhaven.net/api/v1/";
+  const devUrl = "/api/v1/";
+  const prodUrl = "/api/v1/";
   return ensureTrailingSlash(env === "development" ? devUrl : prodUrl);
 };
 
