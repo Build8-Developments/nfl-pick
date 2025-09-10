@@ -32,7 +32,7 @@ export const getMyPickByWeek = async (req: Request, res: Response) => {
 
     // Ensure propBetStatus is included in the response
     if (pick) {
-      (pick as any).propBetStatus = pick.propBetStatus || 'pending';
+      (pick as any).propBetStatus = pick.propBetStatus || "pending";
     }
   } catch (err) {
     console.error("[PICKS] getMyPickByWeek error", { userId, week, err });
@@ -305,10 +305,11 @@ export const upsertMyPick = async (req: Request, res: Response) => {
     // But allow editing picks before the week starts
     if (touchdownScorer && touchdownScorer.trim().length > 0) {
       const currentSeason = 2024; // You might want to make this dynamic based on current year
-      
+
       // Check if this is an edit of an existing pick for the same week
-      const isEditingSameWeek = existing && existing.touchdownScorer === touchdownScorer;
-      
+      const isEditingSameWeek =
+        existing && existing.touchdownScorer === touchdownScorer;
+
       // Only validate if not editing the same week with the same TD scorer
       if (!isEditingSameWeek) {
         const existingUsage = await UsedTdScorer.findOne({
@@ -333,7 +334,9 @@ export const upsertMyPick = async (req: Request, res: Response) => {
               const yyyy = Number(gameDate.slice(0, 4));
               const mm = Number(gameDate.slice(4, 6));
               const dd = Number(gameDate.slice(6, 8));
-              const m = gameTime.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
+              const m = gameTime
+                .trim()
+                .match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
               let hours = 12;
               let minutes = 0;
               if (m) {
@@ -360,20 +363,24 @@ export const upsertMyPick = async (req: Request, res: Response) => {
             });
 
             if (weekHasStarted) {
-              console.warn("[PICKS] upsert denied: TD scorer already used in a week that has started", {
-                userId: targetUserId,
-                week: weekNum,
-                playerId: touchdownScorer,
-                usedInWeek: existingUsage.week,
-              });
-              return res
-                .status(400)
-                .json(
-                  ApiResponse.error(
-                    `You have already used this player as a TD scorer in week ${existingUsage.week}. Each player can only be selected once per season.`,
-                    { playerId: touchdownScorer, usedInWeek: existingUsage.week }
-                  )
-                );
+              console.warn(
+                "[PICKS] upsert denied: TD scorer already used in a week that has started",
+                {
+                  userId: targetUserId,
+                  week: weekNum,
+                  playerId: touchdownScorer,
+                  usedInWeek: existingUsage.week,
+                }
+              );
+              return res.status(400).json(
+                ApiResponse.error(
+                  `You have already used this player as a TD scorer in week ${existingUsage.week}. Each player can only be selected once per season.`,
+                  {
+                    playerId: touchdownScorer,
+                    usedInWeek: existingUsage.week,
+                  }
+                )
+              );
             }
           }
         }
@@ -557,16 +564,16 @@ export const upsertMyPick = async (req: Request, res: Response) => {
       updateData.touchdownScorer = touchdownScorer;
     }
     if (propBet && propBet.trim().length > 0) {
-      updateData.propBet = propBet;
+      updateData.propBet = propBet.trim();
       // Set prop bet status to pending when a new prop bet is submitted
-      updateData.propBetStatus = 'pending';
+      updateData.propBetStatus = "pending";
     } else if (propBet === "" || propBet === null) {
       // Clear prop bet if empty string or null
       updateData.propBet = "";
       updateData.propBetStatus = undefined; // Remove status when clearing
     }
     if (propBetOdds && propBetOdds.trim().length > 0) {
-      updateData.propBetOdds = propBetOdds;
+      updateData.propBetOdds = propBetOdds.trim();
     } else if (propBetOdds === "" || propBetOdds === null) {
       // Clear prop bet odds if empty string or null
       updateData.propBetOdds = "";
@@ -628,12 +635,20 @@ export const upsertMyPick = async (req: Request, res: Response) => {
       });
     }
     // Handle TD scorer usage tracking
-    if (finalSaved?.isFinalized && touchdownScorer && touchdownScorer.trim().length > 0) {
+    if (
+      finalSaved?.isFinalized &&
+      touchdownScorer &&
+      touchdownScorer.trim().length > 0
+    ) {
       try {
         const currentSeason = 2024; // You might want to make this dynamic based on current year
-        
+
         // If there was a previous TD scorer for this week, remove it from usage tracking
-        if (existing && existing.touchdownScorer && existing.touchdownScorer !== touchdownScorer) {
+        if (
+          existing &&
+          existing.touchdownScorer &&
+          existing.touchdownScorer !== touchdownScorer
+        ) {
           await UsedTdScorer.deleteOne({
             user: targetUserObjectId,
             season: currentSeason,
@@ -647,7 +662,7 @@ export const upsertMyPick = async (req: Request, res: Response) => {
             week: weekNum,
           });
         }
-        
+
         // Record the new TD scorer usage
         await UsedTdScorer.findOneAndUpdate(
           {
@@ -673,7 +688,12 @@ export const upsertMyPick = async (req: Request, res: Response) => {
       } catch (err: any) {
         console.error("[PICKS] Error recording TD scorer usage:", err);
       }
-    } else if (finalSaved?.isFinalized && existing && existing.touchdownScorer && !touchdownScorer) {
+    } else if (
+      finalSaved?.isFinalized &&
+      existing &&
+      existing.touchdownScorer &&
+      !touchdownScorer
+    ) {
       // If pick is finalized but TD scorer was removed, clean up the usage record
       try {
         const currentSeason = 2024;
@@ -833,7 +853,7 @@ export const getAllPicksByWeek = async (req: Request, res: Response) => {
         touchdownScorer: p.touchdownScorer || null,
         propBet: p.propBet || null,
         propBetOdds: p.propBetOdds || null,
-        propBetStatus: p.propBetStatus || 'pending',
+        propBetStatus: p.propBetStatus || "pending",
         isFinalized: !!p.isFinalized,
         createdAt: p.createdAt,
         updatedAt: p.updatedAt,
@@ -862,171 +882,60 @@ export const getWeeksWithFinalizedPicks = async (
 // Get all prop bets for admin approval
 export const getAllPropBets = async (req: Request, res: Response) => {
   try {
-    console.log("[PICKS] Fetching all prop bets for admin...");
+    console.log("[API] GET /picks/prop-bets - start");
+    // Fetch ALL picks that have a non-empty prop bet, regardless of finalized status
+    let picksWithPropBets = await Pick.find({
+      propBet: { $exists: true, $ne: "", $regex: /\S/ },
+    })
+      .populate("user", "username email avatar")
+      .sort({ createdAt: -1 })
+      .lean();
 
-    // First, let's see what we have in the database
-    const allPicks = await Pick.find({}).lean();
-    console.log("[PICKS] Total picks in database:", allPicks.length);
-
-    const finalizedPicks = allPicks.filter((pick) => pick.isFinalized);
-    console.log("[PICKS] Finalized picks:", finalizedPicks.length);
-
-    if (finalizedPicks.length > 0) {
-      const sample = finalizedPicks[0];
-      if (sample) {
-        console.log("[PICKS] Sample finalized pick:", {
-          _id: sample._id,
-          propBet: sample.propBet,
-          propBetOdds: sample.propBetOdds,
-          isFinalized: sample.isFinalized,
-          user: sample.user,
-        });
-      }
-    }
-
-    // Also check non-finalized picks to see if there are any with prop bets
-    const nonFinalizedPicks = allPicks.filter((pick) => !pick.isFinalized);
-    console.log("[PICKS] Non-finalized picks:", nonFinalizedPicks.length);
-    
-    if (nonFinalizedPicks.length > 0) {
-      const sample = nonFinalizedPicks[0];
-      if (sample) {
-        console.log("[PICKS] Sample non-finalized pick:", {
-          _id: sample._id,
-          propBet: sample.propBet,
-          propBetOdds: sample.propBetOdds,
-          isFinalized: sample.isFinalized,
-          user: sample.user,
-        });
-      }
-    }
-
-    const picksWithPropBets = finalizedPicks.filter((pick) => {
-      const hasPropBet =
-        pick.propBet &&
-        pick.propBet !== null &&
-        pick.propBet !== "" &&
-        pick.propBet.trim().length > 0;
-
-      if (hasPropBet) {
-        console.log("[PICKS] Found pick with prop bet:", {
-          _id: pick._id,
-          propBet: pick.propBet,
-          propBetOdds: pick.propBetOdds,
-        });
-      }
-
-      return hasPropBet;
-    });
-    console.log("[PICKS] Picks with prop bets:", picksWithPropBets.length);
-
-    // Also check all picks (finalized and non-finalized) for prop bets
-    const allPicksWithPropBets = allPicks.filter((pick) => {
-      const hasPropBet =
-        pick.propBet &&
-        pick.propBet !== null &&
-        pick.propBet !== "" &&
-        pick.propBet.trim().length > 0;
-      return hasPropBet;
-    });
-    console.log("[PICKS] All picks with prop bets (any status):", allPicksWithPropBets.length);
-
-    if (allPicksWithPropBets.length > 0) {
-      const sample = allPicksWithPropBets[0];
-      if (sample) {
-        console.log("[PICKS] Sample pick with prop bet (any status):", {
-          _id: sample._id,
-          propBet: sample.propBet,
-          propBetOdds: sample.propBetOdds,
-          isFinalized: sample.isFinalized,
-          propBetStatus: sample.propBetStatus,
-          user: sample.user,
-        });
-      }
-    }
-
-    if (picksWithPropBets.length > 0) {
-      const sample = picksWithPropBets[0];
-      if (sample) {
-        console.log("[PICKS] Sample prop bet:", {
-          _id: sample?._id,
-          propBet: sample?.propBet,
-          propBetOdds: sample?.propBetOdds,
-          user: sample?.user,
-        });
-      }
-    }
-
-    // If no finalized picks with prop bets, try all picks with prop bets
-    let picksToProcess = picksWithPropBets;
-    if (picksToProcess.length === 0) {
-      console.log("[PICKS] No finalized picks with prop bets, checking all picks with prop bets...");
-      picksToProcess = allPicksWithPropBets;
-    }
-
-    // Use the picks we found, but populate user data
-    const picks = await Promise.all(
-      picksToProcess.map(async (pick: any) => {
-        const populatedPick = await Pick.findById(pick._id)
-          .populate("user", "username email avatar")
-          .lean();
-        return populatedPick;
-      })
-    );
-
-    console.log("[PICKS] Using filtered picks with prop bets:", picks.length);
-
-    console.log("[PICKS] Found picks with prop bets:", picks.length);
     console.log(
-      "[PICKS] Sample pick:",
-      picks[0]
-        ? {
-            _id: picks[0]._id,
-            propBet: picks[0].propBet,
-            propBetOdds: picks[0].propBetOdds,
-            isFinalized: picks[0].isFinalized,
-            user: picks[0].user,
-          }
-        : "No picks found"
+      "[API] /picks/prop-bets - raw picks count:",
+      picksWithPropBets?.length || 0
     );
-
-    const propBets = picks
-      .filter((pick) => pick !== null)
-      .map((pick: any) => ({
-        _id: pick._id,
-        user: {
-          _id: pick.user._id,
-          username: pick.user.username,
-          avatar: pick.user.avatar,
-        },
-        week: pick.week,
-        propBet: pick.propBet,
-        propBetOdds: pick.propBetOdds,
-        status: pick.propBetStatus || 'pending', // Use the new propBetStatus field
-        submittedAt: pick.createdAt,
-        approvedAt: pick.propBetApprovedAt,
-        approvedBy: pick.propBetApprovedBy,
-      }));
-
-    console.log("[PICKS] Returning prop bets:", propBets.length);
-    
-    // If no prop bets found, return detailed debug info
-    if (propBets.length === 0) {
-      console.log("[PICKS] No prop bets found. Debug info:", {
-        totalPicks: allPicks.length,
-        finalizedPicks: finalizedPicks.length,
-        nonFinalizedPicks: nonFinalizedPicks.length,
-        allPicksWithPropBets: allPicksWithPropBets.length,
-        picksWithPropBets: picksWithPropBets.length
-      });
-      
-      // Return empty array instead of null
-      return res.status(200).json(ApiResponse.success([]));
+    if (!picksWithPropBets || picksWithPropBets.length === 0) {
+      // Fallback: broader query, then filter in memory
+      const fallback = await Pick.find({
+        $or: [
+          { propBet: { $exists: true } },
+          { propBetStatus: { $exists: true } },
+        ],
+      })
+        .populate("user", "username email avatar")
+        .sort({ createdAt: -1 })
+        .lean();
+      picksWithPropBets = (fallback || []).filter(
+        (p: any) => typeof p.propBet === "string" && p.propBet.trim().length > 0
+      );
+      console.log(
+        "[API] /picks/prop-bets - fallback raw count:",
+        fallback?.length || 0,
+        "filtered:",
+        picksWithPropBets.length
+      );
     }
-    
+
+    const propBets = (picksWithPropBets || []).map((pick: any) => ({
+      _id: pick._id,
+      user: {
+        _id: pick.user?._id || null,
+        username: pick.user?.username || "Unknown",
+        avatar: pick.user?.avatar || "",
+      },
+      week: pick.week,
+      propBet: pick.propBet,
+      propBetOdds: pick.propBetOdds,
+      status: pick.propBetStatus || "pending",
+      submittedAt: pick.createdAt,
+      approvedAt: pick.propBetApprovedAt,
+      approvedBy: pick.propBetApprovedBy,
+    }));
+    console.log("[API] /picks/prop-bets - returning count:", propBets.length);
     return res.status(200).json(ApiResponse.success(propBets));
   } catch (error) {
-    console.error("[PICKS] Error fetching prop bets:", error);
+    console.error("[API] /picks/prop-bets error", error);
     return res.status(500).json(ApiResponse.error("Failed to fetch prop bets"));
   }
 };
@@ -1061,7 +970,7 @@ export const updatePropBetStatus = async (req: Request, res: Response) => {
 
     const updatedPick = await Pick.findByIdAndUpdate(propBetId, updateData, {
       new: true,
-    }).populate('user', 'username email avatar');
+    }).populate("user", "username email avatar");
 
     if (!updatedPick) {
       return res.status(404).json(ApiResponse.error("Prop bet not found"));
@@ -1142,7 +1051,7 @@ export const createTestPropBet = async (req: Request, res: Response) => {
       selections: { test_game: "TEST" },
       propBet: "Test prop bet - Over 100 yards",
       propBetOdds: "+150",
-      propBetStatus: 'pending', // Include the new status field
+      propBetStatus: "pending", // Include the new status field
       isFinalized: true,
     });
 
@@ -1150,7 +1059,7 @@ export const createTestPropBet = async (req: Request, res: Response) => {
     console.log("[TEST] Test prop bet created:", {
       _id: saved._id,
       propBet: saved.propBet,
-      propBetStatus: saved.propBetStatus
+      propBetStatus: saved.propBetStatus,
     });
 
     return res.status(200).json(ApiResponse.success(saved));
@@ -1166,26 +1075,32 @@ export const createTestPropBet = async (req: Request, res: Response) => {
 export const debugPropBetStatus = async (req: Request, res: Response) => {
   try {
     console.log("[DEBUG] Checking prop bet status...");
-    
-    const allPicks = await Pick.find({ propBet: { $exists: true, $ne: "" } }).lean();
+
+    const allPicks = await Pick.find({
+      propBet: { $exists: true, $ne: "" },
+    }).lean();
     console.log("[DEBUG] Found picks with prop bets:", allPicks.length);
-    
-    const propBetStatuses = allPicks.map(pick => ({
+
+    const propBetStatuses = allPicks.map((pick) => ({
       _id: pick._id,
       propBet: pick.propBet,
       propBetStatus: pick.propBetStatus,
       propBetOdds: pick.propBetOdds,
       isFinalized: pick.isFinalized,
-      createdAt: pick.createdAt
+      createdAt: pick.createdAt,
     }));
-    
-    return res.status(200).json(ApiResponse.success({
-      total: allPicks.length,
-      propBets: propBetStatuses
-    }));
+
+    return res.status(200).json(
+      ApiResponse.success({
+        total: allPicks.length,
+        propBets: propBetStatuses,
+      })
+    );
   } catch (error) {
     console.error("[DEBUG] Error checking prop bet status:", error);
-    return res.status(500).json(ApiResponse.error("Failed to check prop bet status"));
+    return res
+      .status(500)
+      .json(ApiResponse.error("Failed to check prop bet status"));
   }
 };
 
@@ -1193,18 +1108,17 @@ export const debugPropBetStatus = async (req: Request, res: Response) => {
 export const debugAllPicksSimple = async (req: Request, res: Response) => {
   try {
     console.log("[DEBUG] Fetching all picks...");
-    
+
     const allPicks = await Pick.find({}).lean();
     console.log("[DEBUG] Total picks in database:", allPicks.length);
-    
-    const picksWithPropBets = allPicks.filter(pick => 
-      pick.propBet && 
-      pick.propBet.trim().length > 0
+
+    const picksWithPropBets = allPicks.filter(
+      (pick) => pick.propBet && pick.propBet.trim().length > 0
     );
-    
+
     console.log("[DEBUG] Picks with prop bets:", picksWithPropBets.length);
-    
-    const result = allPicks.map(pick => ({
+
+    const result = allPicks.map((pick) => ({
       _id: pick._id,
       user: pick.user,
       week: pick.week,
@@ -1213,14 +1127,16 @@ export const debugAllPicksSimple = async (req: Request, res: Response) => {
       propBetStatus: pick.propBetStatus,
       isFinalized: pick.isFinalized,
       createdAt: pick.createdAt,
-      updatedAt: pick.updatedAt
+      updatedAt: pick.updatedAt,
     }));
-    
-    return res.status(200).json(ApiResponse.success({
-      total: allPicks.length,
-      picksWithPropBets: picksWithPropBets.length,
-      picks: result
-    }));
+
+    return res.status(200).json(
+      ApiResponse.success({
+        total: allPicks.length,
+        picksWithPropBets: picksWithPropBets.length,
+        picks: result,
+      })
+    );
   } catch (error) {
     console.error("[DEBUG] Error fetching all picks:", error);
     return res.status(500).json(ApiResponse.error("Failed to fetch all picks"));
@@ -1231,19 +1147,18 @@ export const debugAllPicksSimple = async (req: Request, res: Response) => {
 export const testDatabaseConnection = async (req: Request, res: Response) => {
   try {
     console.log("[TEST] Testing database connection...");
-    
+
     const allPicks = await Pick.find({}).lean();
     console.log("[TEST] Total picks in database:", allPicks.length);
-    
-    const picksWithPropBets = allPicks.filter(pick => 
-      pick.propBet && 
-      pick.propBet.trim().length > 0
+
+    const picksWithPropBets = allPicks.filter(
+      (pick) => pick.propBet && pick.propBet.trim().length > 0
     );
-    
+
     console.log("[TEST] Picks with prop bets:", picksWithPropBets.length);
-    
+
     // Show detailed info about all picks
-    const picksInfo = allPicks.map(pick => ({
+    const picksInfo = allPicks.map((pick) => ({
       _id: pick._id,
       week: pick.week,
       propBet: pick.propBet,
@@ -1251,24 +1166,24 @@ export const testDatabaseConnection = async (req: Request, res: Response) => {
       propBetStatus: pick.propBetStatus,
       isFinalized: pick.isFinalized,
       user: pick.user,
-      createdAt: pick.createdAt
+      createdAt: pick.createdAt,
     }));
-    
+
     return res.status(200).json({
       success: true,
       message: "Database connection successful",
       data: {
         totalPicks: allPicks.length,
         picksWithPropBets: picksWithPropBets.length,
-        allPicks: picksInfo
-      }
+        allPicks: picksInfo,
+      },
     });
   } catch (error) {
     console.error("[TEST] Database connection error:", error);
     return res.status(500).json({
       success: false,
       message: "Database connection failed",
-      error: error instanceof Error ? error.message : "Unknown error"
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -1285,7 +1200,7 @@ export const getUsedTdScorers = async (req: Request, res: Response) => {
     }).lean();
 
     const playerIds = usedScorers.map((usage) => usage.playerId);
-    
+
     console.log("[PICKS] Retrieved used TD scorers", {
       userId,
       season: currentSeason,

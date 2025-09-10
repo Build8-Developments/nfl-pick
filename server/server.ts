@@ -6,6 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import cookieParser from "cookie-parser";
+import { SESSION_SECRET } from "./src/config/environment.js";
 import session from "express-session";
 import MongoStore from "connect-mongo";
 import app from "./src/app.js";
@@ -22,6 +23,8 @@ import {
 import "./src/services/notification.service.js";
 
 const server = express();
+// Trust the reverse proxy (Caddy) so secure cookies work behind HTTPS
+server.set("trust proxy", 1);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -29,7 +32,6 @@ const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, "uploads", "avatars");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
-  console.log(`Created uploads directory: ${uploadsDir}`);
 } else {
   console.log(`Uploads directory already exists: ${uploadsDir}`);
 }
@@ -38,12 +40,12 @@ if (!fs.existsSync(uploadsDir)) {
 server.use(morgan("dev"));
 
 // Cookie parser middleware
-server.use(cookieParser());
+server.use(cookieParser(SESSION_SECRET));
 
 // Session middleware
 server.use(
   session({
-    secret: process.env.JWT_SECRET || "fallback-secret-key",
+    secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false, // Only save sessions that have been modified
     store: MongoStore.create({
@@ -52,11 +54,11 @@ server.use(
       ttl: 7 * 24 * 60 * 60, // 7 days in seconds
     }),
     cookie: {
-      secure: NODE_ENV === "production", // Use secure cookies in production
-      httpOnly: true, // Prevent XSS attacks
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
-      sameSite: NODE_ENV === "production" ? "strict" : "lax", // CSRF protection
-      domain: NODE_ENV === "production" ? undefined : "localhost", // Allow localhost in development
+      secure: NODE_ENV === "production",
+      httpOnly: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      sameSite: NODE_ENV === "production" ? "none" : "lax",
+      domain: NODE_ENV === "production" ? ".blockhaven.net" : undefined,
     },
     name: "nfl-picks-session", // Custom session name
     rolling: true, // Reset expiration on activity
@@ -64,15 +66,15 @@ server.use(
 );
 
 // Debug middleware to log session info
-server.use((req, res, next) => {
-  console.log("Request session debug:", {
-    hasSession: !!req.session,
-    sessionId: req.session.id,
-    sessionKeys: req.session ? Object.keys(req.session) : [],
-    cookies: req.headers.cookie,
-  });
-  next();
-});
+// server.use((req, res, next) => {
+//   console.log("Request session debug:", {
+//     hasSession: !!req.session,
+//     sessionId: req.session.id,
+//     sessionKeys: req.session ? Object.keys(req.session) : [],
+//     cookies: req.headers.cookie,
+//   });
+//   next();
+// });
 
 // Global Middlewares
 server.use(
@@ -83,8 +85,10 @@ server.use(
 );
 server.use(
   cors({
-    // Allow specific origins for development
-    origin: ["http://localhost:5173", "http://localhost:3000"],
+    origin:
+      NODE_ENV === "production"
+        ? ["https://nfl.blockhaven.net"]
+        : ["http://localhost:5173", "http://localhost:3000"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Last-Event-ID"],

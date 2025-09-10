@@ -68,10 +68,14 @@ const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [playerName, setPlayerName] = useState<string>("");
-  const [seasonRecord, setSeasonRecord] = useState<{ wins: number; losses: number; percentage: number }>({
+  const [seasonRecord, setSeasonRecord] = useState<{
+    wins: number;
+    losses: number;
+    percentage: number;
+  }>({
     wins: 0,
     losses: 0,
-    percentage: 0
+    percentage: 0,
   });
 
   // Function to calculate season record from picks data
@@ -84,11 +88,14 @@ const Dashboard = () => {
     try {
       let totalWins = 0;
       let totalLosses = 0;
-      
+
       // Get all weeks with picks
-      const weeksRes = await apiClient.get<{ success: boolean; data?: number[] }>("picks/weeks");
+      const weeksRes = await apiClient.get<{
+        success: boolean;
+        data?: number[];
+      }>("picks/weeks");
       const weeks = Array.isArray(weeksRes.data) ? weeksRes.data : [];
-      
+
       // For each week, get the user's picks and calculate wins/losses
       for (const week of weeks) {
         const pickRes = await apiClient.get<{
@@ -99,27 +106,34 @@ const Dashboard = () => {
             isFinalized?: boolean;
           } | null;
         }>(`picks/${week}`);
-        
-        if (pickRes.success && pickRes.data?.isFinalized && pickRes.data.outcomes) {
+
+        if (
+          pickRes.success &&
+          pickRes.data?.isFinalized &&
+          pickRes.data.outcomes
+        ) {
           const outcomes = pickRes.data.outcomes;
-          const wins = Object.values(outcomes).filter(outcome => outcome === true).length;
-          const losses = Object.values(outcomes).filter(outcome => outcome === false).length;
-          
+          const wins = Object.values(outcomes).filter(
+            (outcome) => outcome === true
+          ).length;
+          const losses = Object.values(outcomes).filter(
+            (outcome) => outcome === false
+          ).length;
+
           totalWins += wins;
           totalLosses += losses;
         }
       }
-      
+
       const totalGames = totalWins + totalLosses;
       const percentage = totalGames > 0 ? (totalWins / totalGames) * 100 : 0;
-      
+
       setSeasonRecord({
         wins: totalWins,
         losses: totalLosses,
-        percentage: percentage
+        percentage: percentage,
       });
     } catch (error) {
-      console.error("Error calculating season record:", error);
       // Keep default values on error
     }
   };
@@ -153,7 +167,6 @@ const Dashboard = () => {
               setCurrentWeek(weekFromGames);
               // Now fetch pick data for the correct week
               const pickRes = await dashboardApi.getMyPick(weekFromGames);
-              console.log("Pick data for week", weekFromGames, ":", pickRes);
               if (pickRes.success) {
                 setUserPick(pickRes.data);
                 // If there's a touchdown scorer, fetch the player name
@@ -179,9 +192,7 @@ const Dashboard = () => {
 
         // If we still don't have pick data, try fetching for week 1 directly
         if (!userPick) {
-          console.log("No pick data found, trying week 1 directly...");
           const fallbackPickRes = await dashboardApi.getMyPick(1);
-          console.log("Fallback pick data for week 1:", fallbackPickRes);
           if (fallbackPickRes.success) {
             setUserPick(fallbackPickRes.data);
             setCurrentWeek(1);
@@ -195,7 +206,6 @@ const Dashboard = () => {
           }
         }
       } catch (err: unknown) {
-        console.error("Error fetching dashboard data:", err);
         setError(
           err instanceof Error ? err.message : "Failed to load dashboard data"
         );
@@ -263,7 +273,9 @@ const Dashboard = () => {
           </p>
         </div>
         <div className="text-center py-8">
-          <p className="text-muted-foreground mb-4">You need to be logged in to access the dashboard.</p>
+          <p className="text-muted-foreground mb-4">
+            You need to be logged in to access the dashboard.
+          </p>
           <Button asChild>
             <Link to="/login">Go to Login</Link>
           </Button>

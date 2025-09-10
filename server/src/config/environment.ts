@@ -10,6 +10,7 @@ const required = [
   "JWT_EXPIRATION",
   "RAPIDAPI_KEY",
   "RAPIDAPI_HOST",
+  "SESSION_SECRET",
 ] as const;
 
 const optional = [
@@ -33,11 +34,8 @@ export const {
   JWT_EXPIRATION,
   RAPIDAPI_KEY,
   RAPIDAPI_HOST,
+  SESSION_SECRET,
 } = process.env as Record<(typeof required)[number], string>;
 
-export const {
-  EMAIL_USER,
-  EMAIL_APP_PASSWORD,
-  EMAIL_FROM,
-  CLIENT_URL,
-} = process.env as Record<(typeof optional)[number], string | undefined>;
+export const { EMAIL_USER, EMAIL_APP_PASSWORD, EMAIL_FROM, CLIENT_URL } =
+  process.env as Record<(typeof optional)[number], string | undefined>;

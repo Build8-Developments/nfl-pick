@@ -118,9 +118,7 @@ const Leaderboard = () => {
       setSeasonStandings(data);
 
       // If no data, show a helpful message
-      if (data.length === 0) {
-        console.log("No season standings data available");
-      }
+      // If no data, silently keep empty state
     } catch (err) {
       console.error("Error loading season standings:", err);
       setError(
@@ -142,9 +140,7 @@ const Leaderboard = () => {
       setWeeklyStandings(data);
 
       // If no data, show a helpful message
-      if (data.length === 0) {
-        console.log(`No weekly standings data available for week ${week}`);
-      }
+      // If no data, silently keep empty state
     } catch (err) {
       console.error("Error loading weekly standings:", err);
       setError(

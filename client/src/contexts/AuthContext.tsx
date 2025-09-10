@@ -17,7 +17,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           data?: { user: Record<string, unknown> };
           message?: string;
         }>("auth/validate");
-        
+
         if (res?.success && res.data) {
           const { user } = res.data;
           const normalized: User = {
@@ -42,10 +42,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } catch (error) {
         // Only log errors that are not authentication-related to avoid spam
         if (error instanceof Error) {
-          const isAuthError = error.message.includes('401') || 
-                             error.message.includes('Not authenticated') ||
-                             error.message.includes('Unauthorized');
-          
+          const isAuthError =
+            error.message.includes("401") ||
+            error.message.includes("Not authenticated") ||
+            error.message.includes("Unauthorized");
+
           if (!isAuthError) {
             console.error("Session validation failed:", error);
           }
@@ -124,7 +125,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setCurrentUser(user);
     // No need to store in localStorage - using server sessions
   };
-
 
   const value: AuthContextValue = {
     currentUser,

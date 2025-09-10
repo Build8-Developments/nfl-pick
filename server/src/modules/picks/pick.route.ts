@@ -28,6 +28,14 @@ pickRouter.get("/all/:week", asyncHandler(getAllPicksByWeek));
 pickRouter.get("/weeks", asyncHandler(getWeeksWithFinalizedPicks));
 pickRouter.get("/used-td-scorers", asyncHandler(getUsedTdScorers));
 
+// Prop bet management routes (admin only) - ensure these are registered before generic param routes
+pickRouter.get("/prop-bets", protectAdmin, asyncHandler(getAllPropBets));
+pickRouter.patch(
+  "/prop-bets/:propBetId",
+  protectAdmin,
+  asyncHandler(updatePropBetStatus)
+);
+
 // Query by ?week=3&userId=... (userId optional, defaults to authenticated user)
 pickRouter.get("/", asyncHandler(getPickByQuery));
 pickRouter.get("/:week", asyncHandler(getMyPickByWeek));
@@ -48,21 +56,29 @@ pickRouter.post(
 );
 pickRouter.delete("/:week", asyncHandler(deleteMyPick));
 
-// Prop bet management routes (admin only)
-pickRouter.get("/prop-bets", protectAdmin, asyncHandler(getAllPropBets));
-pickRouter.patch("/prop-bets/:propBetId", protectAdmin, asyncHandler(updatePropBetStatus));
-
 // Debug route (admin only)
 pickRouter.get("/debug", protectAdmin, asyncHandler(debugAllPicks));
 
 // Test route (admin only)
-pickRouter.post("/test-prop-bet", protectAdmin, asyncHandler(createTestPropBet));
+pickRouter.post(
+  "/test-prop-bet",
+  protectAdmin,
+  asyncHandler(createTestPropBet)
+);
 
 // Debug route (admin only)
-pickRouter.get("/debug-prop-bet-status", protectAdmin, asyncHandler(debugPropBetStatus));
+pickRouter.get(
+  "/debug-prop-bet-status",
+  protectAdmin,
+  asyncHandler(debugPropBetStatus)
+);
 
 // Debug route (admin only) - simple all picks
-pickRouter.get("/debug-all-picks", protectAdmin, asyncHandler(debugAllPicksSimple));
+pickRouter.get(
+  "/debug-all-picks",
+  protectAdmin,
+  asyncHandler(debugAllPicksSimple)
+);
 
 // Test route (no auth required) - test database connection
 pickRouter.get("/test-db", asyncHandler(testDatabaseConnection));

@@ -52,8 +52,6 @@ const Layout = () => {
 
   const avatarUrl = computeAvatarUrl(currentUser?.avatar);
 
-  console.log(avatarUrl);
-
   return (
     <div className="min-h-screen bg-background">
       {/* Mobile menu button */}
