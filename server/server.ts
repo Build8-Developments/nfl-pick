@@ -148,7 +148,7 @@ server.use(errorHandler);
         try {
           const result = await syncBettingOddsForAllGames();
           console.log(
-            `[Scheduler] Weekly betting odds sync complete. Total games: ${result.totals.games}, synced: ${result.totals.synced}, failed: ${result.totals.failed}`
+            `[Scheduler] Weekly betting odds sync complete. Total games: ${result.totals.games}, synced: ${result.totals.syncedDraftKings}, failed: ${result.totals.failed}`
           );
         } catch (err) {
           console.error("[Scheduler] Failed weekly betting odds sync:", err);

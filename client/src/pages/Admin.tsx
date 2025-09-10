@@ -43,21 +43,21 @@ type ApiUser = {
   avatar?: string;
 };
 
+type PropBetItem = {
+  _id: string;
+  user: ApiUser;
+  week: number;
+  propBet: string;
+  propBetOdds?: string;
+  status: "pending" | "approved" | "rejected";
+  submittedAt: string;
+};
+
 const Admin = () => {
   const { currentUser } = useAuth();
 
   // Prop Bet Management
-  const [propBets, setPropBets] = useState<
-    Array<{
-      _id: string;
-      user: ApiUser;
-      week: number;
-      propBet: string;
-      propBetOdds?: string;
-      status: "pending" | "approved" | "rejected";
-      submittedAt: string;
-    }>
-  >([]);
+  const [propBets, setPropBets] = useState<PropBetItem[]>([]);
   const [propBetActions, setPropBetActions] = useState<Record<string, string>>(
     {}
   );
@@ -125,32 +125,14 @@ const Admin = () => {
     try {
       setIsLoadingPropBets(true);
       const res = await apiClient.get<
-        | ApiSuccess<
-            Array<{
-              _id: string;
-              user: ApiUser;
-              week: number;
-              propBet: string;
-              propBetOdds?: string;
-              status: "pending" | "approved" | "rejected";
-              submittedAt: string;
-            }>
-          >
-        | Array<{
-            _id: string;
-            user: ApiUser;
-            week: number;
-            propBet: string;
-            propBetOdds?: string;
-            status: "pending" | "approved" | "rejected";
-            submittedAt: string;
-          }>
+        ApiSuccess<PropBetItem[]> | PropBetItem[]
       >("picks/prop-bets");
       const data = Array.isArray(res)
         ? res
-        : (res as ApiSuccess<any[]>)?.data ?? [];
+        : (res as ApiSuccess<PropBetItem[]>)?.data ?? [];
       setPropBets(data);
     } catch (err) {
+      console.error("Failed to load prop bets:", err);
       setPropBets([]);
     } finally {
       setIsLoadingPropBets(false);
