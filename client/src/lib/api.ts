@@ -91,6 +91,7 @@ export class ApiClient {
       .get("content-type")
       ?.includes("application/json");
     if (!res.ok) {
+      // If unauthorized, return a typed error without console noise
       const errorPayload = isJson
         ? await res.json().catch(() => ({}))
         : await res.text().catch(() => "");

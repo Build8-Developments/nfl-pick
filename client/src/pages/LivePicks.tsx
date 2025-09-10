@@ -419,7 +419,6 @@ const LivePicks = () => {
         es = new EventSource(streamUrl);
 
         es.onopen = () => {
-          console.log("SSE connection opened");
           reconnectAttempts = 0;
         };
 
@@ -449,7 +448,6 @@ const LivePicks = () => {
         };
 
         es.onerror = (error) => {
-          console.warn("SSE connection error:", error);
           es?.close();
           es = null;
 
@@ -460,20 +458,21 @@ const LivePicks = () => {
               1000 * Math.pow(2, reconnectAttempts),
               30000
             );
-            console.log(
-              `Attempting to reconnect SSE in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`
-            );
+            // silently retry with backoff
             reconnectTimeout = setTimeout(connect, delay);
           } else {
-            console.warn("Max SSE reconnection attempts reached, giving up");
+            // stop retrying after max attempts
           }
         };
       } catch (error) {
-        console.error("Failed to create SSE connection:", error);
+        // silently ignore create errors
       }
     };
 
-    connect();
+    // Do not connect if user is not authenticated
+    if (currentUser) {
+      connect();
+    }
 
     return () => {
       if (reconnectTimeout) {
@@ -483,7 +482,7 @@ const LivePicks = () => {
         es.close();
       }
     };
-  }, [selectedWeek]);
+  }, [selectedWeek, currentUser]);
 
   // Fallback polling when SSE fails
   useEffect(() => {

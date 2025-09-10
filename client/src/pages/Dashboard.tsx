@@ -119,7 +119,6 @@ const Dashboard = () => {
         percentage: percentage
       });
     } catch (error) {
-      console.error("Error calculating season record:", error);
       // Keep default values on error
     }
   };
@@ -153,7 +152,6 @@ const Dashboard = () => {
               setCurrentWeek(weekFromGames);
               // Now fetch pick data for the correct week
               const pickRes = await dashboardApi.getMyPick(weekFromGames);
-              console.log("Pick data for week", weekFromGames, ":", pickRes);
               if (pickRes.success) {
                 setUserPick(pickRes.data);
                 // If there's a touchdown scorer, fetch the player name
@@ -179,9 +177,7 @@ const Dashboard = () => {
 
         // If we still don't have pick data, try fetching for week 1 directly
         if (!userPick) {
-          console.log("No pick data found, trying week 1 directly...");
           const fallbackPickRes = await dashboardApi.getMyPick(1);
-          console.log("Fallback pick data for week 1:", fallbackPickRes);
           if (fallbackPickRes.success) {
             setUserPick(fallbackPickRes.data);
             setCurrentWeek(1);
@@ -195,7 +191,6 @@ const Dashboard = () => {
           }
         }
       } catch (err: unknown) {
-        console.error("Error fetching dashboard data:", err);
         setError(
           err instanceof Error ? err.message : "Failed to load dashboard data"
         );

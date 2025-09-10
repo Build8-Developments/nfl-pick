@@ -28,6 +28,10 @@ pickRouter.get("/all/:week", asyncHandler(getAllPicksByWeek));
 pickRouter.get("/weeks", asyncHandler(getWeeksWithFinalizedPicks));
 pickRouter.get("/used-td-scorers", asyncHandler(getUsedTdScorers));
 
+// Prop bet management routes (admin only) - ensure these are registered before generic param routes
+pickRouter.get("/prop-bets", protectAdmin, asyncHandler(getAllPropBets));
+pickRouter.patch("/prop-bets/:propBetId", protectAdmin, asyncHandler(updatePropBetStatus));
+
 // Query by ?week=3&userId=... (userId optional, defaults to authenticated user)
 pickRouter.get("/", asyncHandler(getPickByQuery));
 pickRouter.get("/:week", asyncHandler(getMyPickByWeek));
@@ -47,10 +51,6 @@ pickRouter.post(
   asyncHandler(upsertMyPick)
 );
 pickRouter.delete("/:week", asyncHandler(deleteMyPick));
-
-// Prop bet management routes (admin only)
-pickRouter.get("/prop-bets", protectAdmin, asyncHandler(getAllPropBets));
-pickRouter.patch("/prop-bets/:propBetId", protectAdmin, asyncHandler(updatePropBetStatus));
 
 // Debug route (admin only)
 pickRouter.get("/debug", protectAdmin, asyncHandler(debugAllPicks));

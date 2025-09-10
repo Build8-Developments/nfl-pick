@@ -124,10 +124,19 @@ const Admin = () => {
   const fetchPropBets = async () => {
     try {
       setIsLoadingPropBets(true);
-      console.log("[ADMIN] Fetching prop bets...");
       const res = await apiClient.get<
-        ApiSuccess<
-          Array<{
+        | ApiSuccess<
+            Array<{
+              _id: string;
+              user: ApiUser;
+              week: number;
+              propBet: string;
+              propBetOdds?: string;
+              status: "pending" | "approved" | "rejected";
+              submittedAt: string;
+            }>
+          >
+        | Array<{
             _id: string;
             user: ApiUser;
             week: number;
@@ -136,13 +145,12 @@ const Admin = () => {
             status: "pending" | "approved" | "rejected";
             submittedAt: string;
           }>
-        >
       >("picks/prop-bets");
-      console.log("[ADMIN] Prop bets response:", res);
-      console.log("[ADMIN] Prop bets data:", res.data);
-      setPropBets(res.data ?? []);
+      const data = Array.isArray(res)
+        ? res
+        : (res as ApiSuccess<any[]>)?.data ?? [];
+      setPropBets(data);
     } catch (err) {
-      console.error("Error fetching prop bets:", err);
       setPropBets([]);
     } finally {
       setIsLoadingPropBets(false);
@@ -348,27 +356,6 @@ const Admin = () => {
       ...prev,
       [propBetId]: action,
     }));
-  };
-
-  const savePropBetActions = async () => {
-    setIsUpdating(true);
-    try {
-      const actions = Object.entries(propBetActions);
-      for (const [propBetId, action] of actions) {
-        await apiClient.patch<ApiSuccess<unknown>>(
-          `picks/prop-bets/${propBetId}`,
-          {
-            status: action,
-          }
-        );
-      }
-      setPropBetActions({});
-      fetchPropBets(); // Refresh the list
-    } catch (err) {
-      console.error("Error updating prop bets:", err);
-    } finally {
-      setIsUpdating(false);
-    }
   };
 
   const getGameStatus = (game: {
@@ -614,34 +601,7 @@ const Admin = () => {
                 </div>
               </div>
 
-              {/* Debug Information */}
-              <div className="mb-4 p-3 bg-gray-100 rounded text-xs">
-                <strong>Debug Info:</strong>
-                <br />
-                Total prop bets: {propBets.length}
-                <br />
-                Filtered prop bets: {filteredPropBets.length}
-                <br />
-                Selected user: {selectedUser}
-                <br />
-                Selected week: {selectedPropWeek}
-                <br />
-                Available weeks: {availableWeeks.join(", ")}
-                <br />
-                Users count: {users.length}
-                <br />
-                <strong>Game Status Debug:</strong>
-                <br />
-                Total games: {games.length}
-                <br />
-                Completed games: {currentWeekStats.completedGames}
-                <br />
-                Sample game statuses:{" "}
-                {games
-                  .slice(0, 3)
-                  .map((g) => `${g.gameID}: ${g.gameStatus || "no status"}`)
-                  .join(", ")}
-              </div>
+              {/* Debug UI removed for clean production UI */}
 
               {isLoadingPropBets ? (
                 <div className="text-center py-8">
@@ -790,7 +750,24 @@ const Admin = () => {
               {Object.keys(propBetActions).length > 0 && (
                 <div className="mt-6 flex justify-end">
                   <Button
-                    onClick={savePropBetActions}
+                    onClick={async () => {
+                      setIsUpdating(true);
+                      const actions = Object.entries(propBetActions);
+                      try {
+                        await Promise.all(
+                          actions.map(([propBetId, action]) =>
+                            apiClient.patch<ApiSuccess<unknown>>(
+                              `picks/prop-bets/${propBetId}`,
+                              { status: action }
+                            )
+                          )
+                        );
+                        setPropBetActions({});
+                        await fetchPropBets();
+                      } finally {
+                        setIsUpdating(false);
+                      }
+                    }}
                     disabled={isUpdating}
                     className="min-w-32"
                   >

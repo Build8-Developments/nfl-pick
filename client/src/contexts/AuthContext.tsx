@@ -109,10 +109,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       await apiClient.post("auth/logout");
       setCurrentUser(null);
+      // Ensure any open SSE connections or pending requests stop by navigating away
+      try {
+        window.location.assign("/login");
+      } catch {}
       return { success: true } as const;
     } catch (e: unknown) {
       // Even if the server logout fails, clear local state
       setCurrentUser(null);
+      try {
+        window.location.assign("/login");
+      } catch {}
       return {
         success: false,
         error: e instanceof Error ? e.message : "Logout failed",
