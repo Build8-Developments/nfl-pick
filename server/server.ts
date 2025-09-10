@@ -32,7 +32,6 @@ const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, "uploads", "avatars");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
-  console.log(`Created uploads directory: ${uploadsDir}`);
 } else {
   console.log(`Uploads directory already exists: ${uploadsDir}`);
 }
@@ -59,7 +58,7 @@ server.use(
       httpOnly: true,
       maxAge: 7 * 24 * 60 * 60 * 1000,
       sameSite: NODE_ENV === "production" ? "none" : "lax",
-      domain: NODE_ENV === "production" ? ".blockhaven.net" : undefined
+      domain: NODE_ENV === "production" ? ".blockhaven.net" : undefined,
     },
     name: "nfl-picks-session", // Custom session name
     rolling: true, // Reset expiration on activity
@@ -67,15 +66,15 @@ server.use(
 );
 
 // Debug middleware to log session info
-server.use((req, res, next) => {
-  console.log("Request session debug:", {
-    hasSession: !!req.session,
-    sessionId: req.session.id,
-    sessionKeys: req.session ? Object.keys(req.session) : [],
-    cookies: req.headers.cookie,
-  });
-  next();
-});
+// server.use((req, res, next) => {
+//   console.log("Request session debug:", {
+//     hasSession: !!req.session,
+//     sessionId: req.session.id,
+//     sessionKeys: req.session ? Object.keys(req.session) : [],
+//     cookies: req.headers.cookie,
+//   });
+//   next();
+// });
 
 // Global Middlewares
 server.use(
@@ -86,9 +85,10 @@ server.use(
 );
 server.use(
   cors({
-    origin: NODE_ENV === "production"
-      ? ["https://nfl.blockhaven.net"]
-      : ["http://localhost:5173", "http://localhost:3000"],
+    origin:
+      NODE_ENV === "production"
+        ? ["https://nfl.blockhaven.net"]
+        : ["http://localhost:5173", "http://localhost:3000"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Last-Event-ID"],

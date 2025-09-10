@@ -111,8 +111,6 @@ export class ApiClient {
     const responseData = isJson
       ? await res.json()
       : ((await res.text()) as unknown);
-    // Only log errors or when debugging is needed
-    // console.log("[API CLIENT] Raw response data:", responseData);
     return responseData as TResponse;
   }
 

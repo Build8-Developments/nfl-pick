@@ -4,6 +4,7 @@ import BettingOdds from "../betting-odds/bettingOdds.model.js";
 import { getNFLBettingOddsForGame } from "../betting-odds/bettingOdds.service.js";
 import type { IGame } from "../games/games.model.js";
 import { insertGames } from "../games/games.service.js";
+import { getAllGames } from "../games/games.service.js";
 import { insertPlayers } from "../players/players.service.js";
 
 const getCurrentSeason = () => {
@@ -165,11 +166,11 @@ export const syncBettingOddsForGame = async (gameId: string) => {
   // Try different possible API response structures
   let awaySpread = "PK";
   let homeSpread = "PK";
-  
+
   // Check various possible structures
-  if (data.espnbet?.awayTeamSpread) {
-    awaySpread = data.espnbet.awayTeamSpread;
-    homeSpread = data.espnbet.homeTeamSpread;
+  if (data.draftkings?.awayTeamSpread) {
+    awaySpread = data.draftkings.awayTeamSpread;
+    homeSpread = data.draftkings.homeTeamSpread;
   } else if (data.awayTeamSpread) {
     awaySpread = data.awayTeamSpread;
     homeSpread = data.homeTeamSpread;
@@ -186,7 +187,7 @@ export const syncBettingOddsForGame = async (gameId: string) => {
       // Generate a random spread between -7.5 and +7.5
       const spreadValue = (Math.random() - 0.5) * 15; // -7.5 to +7.5
       const roundedSpread = Math.round(spreadValue * 2) / 2; // Round to nearest 0.5
-      
+
       if (roundedSpread > 0) {
         awaySpread = `+${roundedSpread}`;
         homeSpread = `-${roundedSpread}`;
@@ -224,40 +225,106 @@ export const syncBettingOddsForGame = async (gameId: string) => {
 };
 
 export const syncBettingOddsForAllGames = async () => {
-  const games = await getNFLGamesForWeek();
-
-  const rawGames = Array.isArray(games?.body) ? games.body : [];
-
-  const mappedGames = rawGames.map((game: IGame) => ({
-    gameID: game.gameID,
-    gameDate: game.gameDate,
-    homeTeam: game.home,
-    awayTeam: game.away,
-    teamIDHome: game.teamIDHome,
-    teamIDAway: game.teamIDAway,
-  }));
+  // Pull all games across all weeks/seasons that exist in our DB
+  const allGames = await getAllGames();
 
   const failedGames: string[] = [];
+  const updatedGames: string[] = [];
+  const markedNotLoaded: string[] = [];
 
-  for (const game of mappedGames) {
-    const result = await syncBettingOddsForGame(game.gameID);
-    if (result) {
-      console.log(`Synced betting odds for game ${game.gameID}`);
-    } else {
-      console.log(`Failed to sync betting odds for game ${game.gameID}`);
+  for (const game of allGames as unknown as IGame[]) {
+    try {
+      const apiBody = await getNFLBettingOddsForGame(game.gameID);
+      if (!apiBody) {
+        // Upsert placeholder odds marking not loaded yet
+        await BettingOdds.findOneAndUpdate(
+          { gameID: game.gameID },
+          {
+            gameID: game.gameID,
+            gameDate: game.gameDate,
+            homeTeam: game.home,
+            awayTeam: game.away,
+            teamIDHome: game.teamIDHome,
+            teamIDAway: game.teamIDAway,
+            lastUpdatedETime: new Date().toISOString(),
+            odds: {
+              awayTeamSpread: "not loaded yet",
+              homeTeamSpread: "not loaded yet",
+            },
+          },
+          { upsert: true, new: true }
+        );
+        markedNotLoaded.push(game.gameID);
+        continue;
+      }
+
+      const key = Object.keys(apiBody)[0];
+      const data = apiBody[key as keyof typeof apiBody] || {};
+
+      const hasDraftKings =
+        !!data.draftkings?.awayTeamSpread && !!data.draftkings?.homeTeamSpread;
+
+      if (!hasDraftKings) {
+        // Do not sync real odds; mark as not loaded yet
+        await BettingOdds.findOneAndUpdate(
+          { gameID: game.gameID },
+          {
+            gameID: game.gameID,
+            gameDate: data.gameDate || game.gameDate,
+            homeTeam: data.homeTeam || game.home,
+            awayTeam: data.awayTeam || game.away,
+            teamIDHome: data.teamIDHome || game.teamIDHome,
+            teamIDAway: data.teamIDAway || game.teamIDAway,
+            lastUpdatedETime: new Date().toISOString(),
+            odds: {
+              awayTeamSpread: "not loaded yet",
+              homeTeamSpread: "not loaded yet",
+            },
+          },
+          { upsert: true, new: true }
+        );
+        markedNotLoaded.push(game.gameID);
+        continue;
+      }
+
+      const bettingDoc = {
+        gameID: data.gameID || game.gameID,
+        gameDate: data.gameDate || game.gameDate,
+        homeTeam: data.homeTeam || game.home,
+        awayTeam: data.awayTeam || game.away,
+        teamIDHome: data.teamIDHome || game.teamIDHome,
+        teamIDAway: data.teamIDAway || game.teamIDAway,
+        lastUpdatedETime: data.last_updated_e_time || new Date().toISOString(),
+        odds: {
+          awayTeamSpread: data.draftkings.awayTeamSpread,
+          homeTeamSpread: data.draftkings.homeTeamSpread,
+        },
+      };
+
+      await BettingOdds.findOneAndUpdate(
+        { gameID: bettingDoc.gameID },
+        bettingDoc,
+        { upsert: true, new: true }
+      );
+      updatedGames.push(game.gameID);
+      console.log(`Synced DraftKings odds for game ${game.gameID}`);
+    } catch (err) {
+      console.log(`Failed to sync betting odds for game ${game.gameID}`, err);
       failedGames.push(game.gameID);
     }
   }
 
   return {
-    message: "Betting odds synced for all games",
-    games: mappedGames.map((game: IGame) => game.gameID),
-    failedGames: failedGames,
+    message: "Betting odds processed for all games",
     totals: {
-      games: mappedGames.length,
-      synced: mappedGames.filter((game: IGame) => game.gameID).length,
+      games: allGames.length,
+      syncedDraftKings: updatedGames.length,
+      markedNotLoaded: markedNotLoaded.length,
       failed: failedGames.length,
     },
+    syncedDraftKings: updatedGames,
+    notLoaded: markedNotLoaded,
+    failedGames,
   };
 };
 

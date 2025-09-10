@@ -447,7 +447,7 @@ const LivePicks = () => {
             });
         };
 
-        es.onerror = (error) => {
+        es.onerror = () => {
           es?.close();
           es = null;
 
@@ -464,7 +464,7 @@ const LivePicks = () => {
             // stop retrying after max attempts
           }
         };
-      } catch (error) {
+      } catch {
         // silently ignore create errors
       }
     };
@@ -1338,26 +1338,10 @@ const LivePicks = () => {
       {!loading &&
         transformedPicks.length > 0 &&
         (() => {
-          // Filter to only show users with approved prop bets
-          const usersWithApprovedProps = transformedPicks.filter(
-            (user) =>
-              user.propBet.description && user.propBet.status === "approved"
+          // Show all users who have a prop bet description, regardless of status
+          const usersWithProps = transformedPicks.filter(
+            (user) => user.propBet.description
           );
-
-          // Check if current user has a pending prop bet
-          const currentUserPendingProp = transformedPicks.find((user) => {
-            const isCurrentUser =
-              currentUserPicks &&
-              (typeof currentUserPicks.user === "string"
-                ? currentUserPicks.user
-                : currentUserPicks.user?._id) === user.userId;
-            return (
-              isCurrentUser &&
-              user.propBet.description &&
-              user.propBet.status === "pending"
-            );
-          });
-
 
           return (
             <Card>
@@ -1367,33 +1351,13 @@ const LivePicks = () => {
                   Prop Bet
                 </CardTitle>
                 <CardDescription>
-                  {usersWithApprovedProps.length > 0
-                    ? "Approved proposition bets from players"
-                    : "No approved prop bets yet"}
+                  Proposition bets from players with live status
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {/* Show pending prop bet message for current user */}
-                {currentUserPendingProp && (
-                  <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-5 w-5 text-yellow-600" />
-                      <div>
-                        <p className="font-medium text-yellow-800">
-                          Your Prop Bet is Pending Approval
-                        </p>
-                        <p className="text-sm text-yellow-700">
-                          "{currentUserPendingProp.propBet.description}" is
-                          waiting for admin approval.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {usersWithApprovedProps.length > 0 ? (
+                {usersWithProps.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {usersWithApprovedProps.map((user) => {
+                    {usersWithProps.map((user) => {
                       const isCurrentUser =
                         currentUserPicks &&
                         (typeof currentUserPicks.user === "string"
@@ -1409,6 +1373,24 @@ const LivePicks = () => {
                                 : "border-border"
                             }`}
                           >
+                            {/* Status badge */}
+                            <div className="absolute -top-2 left-2">
+                              {user.propBet.status === "approved" && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">
+                                  Approved
+                                </span>
+                              )}
+                              {user.propBet.status === "pending" && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                  Pending
+                                </span>
+                              )}
+                              {user.propBet.status === "rejected" && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200">
+                                  Rejected
+                                </span>
+                              )}
+                            </div>
                             <div className="flex flex-col items-center gap-3 text-center">
                               <img
                                 src={user.userAvatar}
@@ -1434,18 +1416,12 @@ const LivePicks = () => {
                               </div>
                             </div>
                           </div>
-                          {/* Only show outcome if admin has marked it as correct/incorrect */}
-                          {user.propBet.isCorrect !== undefined && (
+                          {/* Show only green check when approved; no X */}
+                          {user.propBet.status === "approved" && (
                             <div className="absolute -top-2 -right-2">
-                              {user.propBet.isCorrect ? (
-                                <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
-                                  <Check className="h-4 w-4 text-white" />
-                                </div>
-                              ) : (
-                                <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg">
-                                  <X className="h-4 w-4 text-white" />
-                                </div>
-                              )}
+                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
+                                <Check className="h-4 w-4 text-white" />
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1455,10 +1431,7 @@ const LivePicks = () => {
                 ) : (
                   <div className="text-center py-8">
                     <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">
-                      No approved prop bets yet. Check back after admin
-                      approval!
-                    </p>
+                    <p className="text-muted-foreground">No prop bets yet.</p>
                   </div>
                 )}
               </CardContent>
@@ -1973,7 +1946,7 @@ const LivePicks = () => {
                 <CardHeader>
                   <CardTitle>Prop Bets</CardTitle>
                   <CardDescription>
-                    Approved proposition bets from players
+                    Proposition bets from players with live status
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1991,56 +1964,62 @@ const LivePicks = () => {
                       </p>
                     </div>
                   ) : (
-                    (() => {
-                      // Filter to only show users with approved prop bets
-                      const usersWithApprovedProps = transformedPicks.filter(
-                        (user) =>
-                          user.propBet.description &&
-                          user.propBet.status === "approved"
-                      );
-
-                      return usersWithApprovedProps.length > 0 ? (
-                        <div className="space-y-4">
-                          {usersWithApprovedProps.map((user) => (
-                            <div
-                              key={user.userId}
-                              className="p-4 border rounded-lg relative"
-                            >
-                              <div className="flex items-center gap-3 mb-2">
-                                <img
-                                  src={user.userAvatar}
-                                  alt={user.userName}
-                                  className="w-8 h-8 rounded-full object-cover border-2 border-primary"
-                                  onError={(e) => {
-                                    const target = e.target as HTMLImageElement;
-                                    target.src = getUserAvatar(user.userName);
-                                  }}
-                                />
-                                <span className="font-semibold">
-                                  {user.userName}
+                    <div className="space-y-4">
+                      {transformedPicks
+                        .filter((user) => user.propBet.description)
+                        .map((user) => (
+                          <div
+                            key={user.userId}
+                            className="p-4 border rounded-lg relative"
+                          >
+                            {/* Status badge */}
+                            <div className="absolute -top-2 left-2">
+                              {user.propBet.status === "approved" && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">
+                                  Approved
                                 </span>
-                              </div>
-                              <div className="bg-muted/50 p-3 rounded-lg">
-                                <p className="font-medium">
-                                  {user.propBet.description}
-                                </p>
-                              </div>
-                              {/* Only show outcome if admin has marked it as correct/incorrect */}
-                              {user.propBet.isCorrect !== undefined &&
-                                getOutcomeIcon(user.propBet.isCorrect)}
+                              )}
+                              {user.propBet.status === "pending" && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                  Pending
+                                </span>
+                              )}
+                              {user.propBet.status === "rejected" && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200">
+                                  Rejected
+                                </span>
+                              )}
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-8">
-                          <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                          <p className="text-muted-foreground">
-                            No approved prop bets yet. Check back after admin
-                            approval!
-                          </p>
-                        </div>
-                      );
-                    })()
+                            <div className="flex items-center gap-3 mb-2">
+                              <img
+                                src={user.userAvatar}
+                                alt={user.userName}
+                                className="w-8 h-8 rounded-full object-cover border-2 border-primary"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.src = getUserAvatar(user.userName);
+                                }}
+                              />
+                              <span className="font-semibold">
+                                {user.userName}
+                              </span>
+                            </div>
+                            <div className="bg-muted/50 p-3 rounded-lg">
+                              <p className="font-medium">
+                                {user.propBet.description}
+                              </p>
+                            </div>
+                            {/* Show only green check when approved; no X */}
+                            {user.propBet.status === "approved" && (
+                              <div className="absolute -top-2 -right-2">
+                                <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
+                                  <Check className="h-4 w-4 text-white" />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                    </div>
                   )}
                 </CardContent>
               </Card>

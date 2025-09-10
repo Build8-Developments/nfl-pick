@@ -1,4 +1,8 @@
-import { RAPIDAPI_KEY, RAPIDAPI_HOST, ensureRapidApiConfigured } from "../config/rapidapi.js";
+import {
+  RAPIDAPI_KEY,
+  RAPIDAPI_HOST,
+  ensureRapidApiConfigured,
+} from "../config/rapidapi.js";
 
 // Tank01 API types based on the provided endpoint
 export interface Tank01BoxScoreResponse {
@@ -180,8 +184,9 @@ export const getNFLBoxScore = async (
   try {
     ensureRapidApiConfigured();
 
-    const baseUrl = "https://tank01-nfl-live-in-game-real-time-statistics-nfl.p.rapidapi.com/getNFLBoxScore";
-    
+    const baseUrl =
+      "https://tank01-nfl-live-in-game-real-time-statistics-nfl.p.rapidapi.com/getNFLBoxScore";
+
     // Build query parameters with defaults from the example
     const params = new URLSearchParams({
       gameID,
@@ -189,31 +194,51 @@ export const getNFLBoxScore = async (
       fantasyPoints: String(options.fantasyPoints ?? true),
       twoPointConversions: String(options.twoPointConversions ?? 2),
       passYards: String(options.passYards ?? FANTASY_SCORING_RULES.passYards),
-      passAttempts: String(options.passAttempts ?? FANTASY_SCORING_RULES.passAttempts),
+      passAttempts: String(
+        options.passAttempts ?? FANTASY_SCORING_RULES.passAttempts
+      ),
       passTD: String(options.passTD ?? FANTASY_SCORING_RULES.passTD),
-      passCompletions: String(options.passCompletions ?? FANTASY_SCORING_RULES.passCompletions),
-      passInterceptions: String(options.passInterceptions ?? FANTASY_SCORING_RULES.passInterceptions),
-      pointsPerReception: String(options.pointsPerReception ?? FANTASY_SCORING_RULES.pointsPerReception),
+      passCompletions: String(
+        options.passCompletions ?? FANTASY_SCORING_RULES.passCompletions
+      ),
+      passInterceptions: String(
+        options.passInterceptions ?? FANTASY_SCORING_RULES.passInterceptions
+      ),
+      pointsPerReception: String(
+        options.pointsPerReception ?? FANTASY_SCORING_RULES.pointsPerReception
+      ),
       carries: String(options.carries ?? FANTASY_SCORING_RULES.carries),
       rushYards: String(options.rushYards ?? FANTASY_SCORING_RULES.rushYards),
       rushTD: String(options.rushTD ?? FANTASY_SCORING_RULES.rushTD),
       fumbles: String(options.fumbles ?? FANTASY_SCORING_RULES.fumbles),
-      receivingYards: String(options.receivingYards ?? FANTASY_SCORING_RULES.receivingYards),
-      receivingTD: String(options.receivingTD ?? FANTASY_SCORING_RULES.receivingTD),
+      receivingYards: String(
+        options.receivingYards ?? FANTASY_SCORING_RULES.receivingYards
+      ),
+      receivingTD: String(
+        options.receivingTD ?? FANTASY_SCORING_RULES.receivingTD
+      ),
       targets: String(options.targets ?? FANTASY_SCORING_RULES.targets),
       defTD: String(options.defTD ?? FANTASY_SCORING_RULES.defTD),
       fgMade: String(options.fgMade ?? FANTASY_SCORING_RULES.fgMade),
       fgMissed: String(options.fgMissed ?? FANTASY_SCORING_RULES.fgMissed),
       xpMade: String(options.xpMade ?? FANTASY_SCORING_RULES.xpMade),
       xpMissed: String(options.xpMissed ?? FANTASY_SCORING_RULES.xpMissed),
-      idpTotalTackles: String(options.idpTotalTackles ?? FANTASY_SCORING_RULES.idpTotalTackles),
-      idpSoloTackles: String(options.idpSoloTackles ?? FANTASY_SCORING_RULES.idpSoloTackles),
+      idpTotalTackles: String(
+        options.idpTotalTackles ?? FANTASY_SCORING_RULES.idpTotalTackles
+      ),
+      idpSoloTackles: String(
+        options.idpSoloTackles ?? FANTASY_SCORING_RULES.idpSoloTackles
+      ),
       idpTFL: String(options.idpTFL ?? FANTASY_SCORING_RULES.idpTFL),
       idpQbHits: String(options.idpQbHits ?? FANTASY_SCORING_RULES.idpQbHits),
       idpInt: String(options.idpInt ?? FANTASY_SCORING_RULES.idpInt),
       idpSacks: String(options.idpSacks ?? FANTASY_SCORING_RULES.idpSacks),
-      idpPassDeflections: String(options.idpPassDeflections ?? FANTASY_SCORING_RULES.idpPassDeflections),
-      idpFumblesRecovered: String(options.idpFumblesRecovered ?? FANTASY_SCORING_RULES.idpFumblesRecovered),
+      idpPassDeflections: String(
+        options.idpPassDeflections ?? FANTASY_SCORING_RULES.idpPassDeflections
+      ),
+      idpFumblesRecovered: String(
+        options.idpFumblesRecovered ?? FANTASY_SCORING_RULES.idpFumblesRecovered
+      ),
     });
 
     const url = `${baseUrl}?${params.toString()}`;
@@ -285,15 +310,19 @@ export const getNFLBoxScore = async (
 
     console.log(`[Tank01] Successfully fetched box score for game: ${gameID}`);
     return data as Tank01BoxScoreResponse;
-
   } catch (error) {
     if (error instanceof Tank01APIError) {
       throw error;
     }
 
-    console.error(`[Tank01] Unexpected error fetching box score for game ${gameID}:`, error);
+    console.error(
+      `[Tank01] Unexpected error fetching box score for game ${gameID}:`,
+      error
+    );
     throw new Tank01APIError(
-      `Failed to fetch box score: ${error instanceof Error ? error.message : "Unknown error"}`,
+      `Failed to fetch box score: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`,
       undefined,
       gameID
     );
@@ -310,7 +339,7 @@ export const validateGameID = (gameID: string): boolean => {
 // Helper function to check if a game is from 2025 season
 export const is2025SeasonGame = (gameID: string): boolean => {
   if (!validateGameID(gameID)) return false;
-  
+
   const year = parseInt(gameID.substring(0, 4));
   return year === 2025;
 };
