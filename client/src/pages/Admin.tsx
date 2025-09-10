@@ -750,9 +750,6 @@ const Admin = () => {
               {Object.keys(propBetActions).length > 0 && (
                 <div className="mt-6 flex justify-end">
                   <Button
-<<<<<<< HEAD
-                    onClick={savePropBetActions}
-=======
                     onClick={async () => {
                       setIsUpdating(true);
                       const actions = Object.entries(propBetActions);
@@ -771,7 +768,6 @@ const Admin = () => {
                         setIsUpdating(false);
                       }
                     }}
->>>>>>> 1d903553206e295839286d5fe052b540eb23fadc
                     disabled={isUpdating}
                     className="min-w-32"
                   >
