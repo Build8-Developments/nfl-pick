@@ -553,7 +553,31 @@ const Picks = () => {
     return true;
   };
 
-  const canSubmit = () => canEditPicks();
+  const canSubmit = () => {
+    if (!selectedWeek || !games.length) return false;
+    
+    const currentWeekGames = games.filter((g) => {
+      const weekNum = Number(g.gameWeek.match(/\d+/)?.[0] ?? NaN);
+      return !Number.isNaN(weekNum) && weekNum === selectedWeek;
+    });
+
+    if (currentWeekGames.length === 0) return false;
+
+    // Check if ALL games in the week have been completed
+    const allGamesCompleted = currentWeekGames.every((g) => {
+      return getGameStatus(g) === "completed";
+    });
+
+    // If all games are completed, picks are locked
+    if (allGamesCompleted) return false;
+
+    // Allow submission if there's at least one available game
+    const hasAvailableGames = currentWeekGames.some((g) => {
+      return getGameStatus(g) !== "completed" && canEditGame(g.gameDate, g.gameTime);
+    });
+
+    return hasAvailableGames;
+  };
 
   // Determine if any selected picks belong to games that are already locked/started
   const getLockedSelectedGames = () => {
@@ -584,12 +608,17 @@ const Picks = () => {
   const handleSubmit = async () => {
     const weekToSave = selectedWeek ?? currentWeek;
     if (!currentUser || !weekToSave) return;
+    
+    // Get all available picks (both locked and unlocked)
+    const allSelections = { ...picks };
     const locked = getLockedSelectedGames();
     const unlockedSelections = getUnlockedSelections();
+    
     if (!canSubmit()) return;
     setIsSubmitting(true);
 
-    const selections: Record<string, string> = { ...unlockedSelections };
+    // Submit all current selections (both locked and unlocked)
+    const selections: Record<string, string> = { ...allSelections };
 
     // Debug: print the exact payload being sent
     const payload = {
@@ -1220,11 +1249,6 @@ const Picks = () => {
 
       {/* Action buttons */}
       <div className="flex flex-col gap-2 items-end">
-        {getLockedSelectedGames().length > 0 && (
-          <div className="text-xs text-amber-700">
-            {getLockedSelectedGames().length} locked pick(s) will be excluded from submission.
-          </div>
-        )}
         <Button
           onClick={handleSubmit}
           disabled={isSubmitting || !canSubmit()}

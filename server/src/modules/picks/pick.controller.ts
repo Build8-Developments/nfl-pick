@@ -431,25 +431,18 @@ export const upsertMyPick = async (req: Request, res: Response) => {
           .status(400)
           .json(ApiResponse.error("No games found for this week"));
       }
-      if (selectionCount !== requiredCount) {
+      // Allow partial submissions - only validate that provided selections are valid
+      if (selectionCount > 0) {
         const providedIds = new Set(selectionEntries.map(([gid]) => gid));
         const missingGameIds: string[] = [];
         for (const gid of eligibleGameIds) {
           if (!providedIds.has(gid)) missingGameIds.push(gid);
         }
-        console.warn("[PICKS] upsert denied: missing selections", {
+        console.log("[PICKS] upsert: partial submission allowed", {
           requiredCount,
           providedCount: selectionCount,
           missingGameIds,
         });
-        return res
-          .status(400)
-          .json(
-            ApiResponse.error(
-              `You must make a pick for all ${requiredCount} upcoming games`,
-              { requiredCount, providedCount: selectionCount, missingGameIds }
-            )
-          );
       }
       // Ensure no selection targets an ineligible (already started) game
       const invalidIds: string[] = [];
