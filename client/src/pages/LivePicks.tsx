@@ -773,11 +773,11 @@ const LivePicks = () => {
           // If user is just an ID string, try to find the user in our users list
           const foundUser = users.find((u) => u._id === p.user);
           if (foundUser?.avatar) {
-            return `http://localhost:3000${foundUser.avatar}`;
+            return computeAvatarUrl(foundUser.avatar);
           }
           return getUserAvatar("Unknown User");
         } else if (p.user?.avatar) {
-          return `http://localhost:3000${p.user.avatar}`;
+          return computeAvatarUrl(p.user.avatar);
         } else {
           return getUserAvatar(userName || "Unknown User");
         }

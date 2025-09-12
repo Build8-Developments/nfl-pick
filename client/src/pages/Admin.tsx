@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 // Removed mock data import - using real API data
 import { apiClient, apiOrigin } from "../lib/api";
+import { computeAvatarUrl } from "../lib/avatarUtils";
 
 type ApiSuccess<T> = { success: true; data: T; message?: string };
 
@@ -922,15 +923,7 @@ const Admin = () => {
                         <tr key={u._id} className="border-b">
                           <td className="py-2 pr-4">
                             <img
-                              src={
-                                u.avatar
-                                  ? u.avatar.startsWith("/uploads")
-                                    ? `${apiOrigin}${u.avatar}`
-                                    : u.avatar.startsWith("uploads/")
-                                    ? `${apiOrigin}/${u.avatar}`
-                                    : u.avatar
-                                  : "https://placehold.co/40x40"
-                              }
+                              src={computeAvatarUrl(u.avatar)}
                               alt="avatar"
                               className="h-8 w-8 rounded-full object-cover border"
                             />

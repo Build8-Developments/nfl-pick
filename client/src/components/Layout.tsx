@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { apiOrigin } from "../lib/api";
+import { computeAvatarUrl } from "../lib/avatarUtils";
 
 const Layout = () => {
   const { currentUser, logout } = useAuth();
@@ -41,14 +41,6 @@ const Layout = () => {
     return location.pathname.startsWith(href);
   };
 
-  const computeAvatarUrl = (raw?: string) => {
-    const placeholder = "https://placehold.co/64x64";
-    if (!raw) return placeholder;
-    if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
-    if (raw.startsWith("/uploads")) return `${apiOrigin}${raw}`;
-    if (raw.startsWith("uploads/")) return `${apiOrigin}/${raw}`;
-    return raw;
-  };
 
   const avatarUrl = computeAvatarUrl(currentUser?.avatar);
 
