@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/useAuth";
 import {
   Card,
@@ -52,6 +52,7 @@ import { memCache } from "@/lib/memCache";
 const Picks = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [lockOfWeek, setLockOfWeek] = useState("");
   const [touchdownScorer, setTouchdownScorer] = useState("");
@@ -132,6 +133,36 @@ const Picks = () => {
         return dateA.getTime() - dateB.getTime();
       });
   }, [games, teamIdToTeam, selectedWeek]);
+
+  const getGameStatus = (game: IGame) => {
+    const statusRaw = (game.gameStatus || "").toLowerCase();
+    if (statusRaw) {
+      if (
+        statusRaw.includes("final") ||
+        statusRaw.includes("completed") ||
+        statusRaw.includes("finished")
+      )
+        return "completed" as const;
+      if (
+        statusRaw.includes("in_progress") ||
+        statusRaw.includes("live") ||
+        statusRaw.includes("active")
+      )
+        return "in_progress" as const;
+      if (
+        statusRaw.includes("scheduled") ||
+        statusRaw.includes("upcoming") ||
+        statusRaw.includes("pre")
+      )
+        return "scheduled" as const;
+    }
+    const now = new Date();
+    const dt = parseGameDateTime(game.gameDate as string, game.gameTime as string);
+    if (dt > now) return "scheduled" as const;
+    const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+    if (dt > fourHoursAgo) return "in_progress" as const;
+    return "completed" as const;
+  };
 
   // Load used TD scorers for the current user
   useEffect(() => {
@@ -233,26 +264,47 @@ const Picks = () => {
       if (weekNums.length) {
         const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
         setAvailableWeeks(uniqueWeeks);
-        // Determine the most relevant week (current/upcoming if possible)
-        const now = new Date();
-        const weeksWithKickoffs = uniqueWeeks.map((wk) => {
+        // Determine last fully completed week
+        const completedWeeks = uniqueWeeks.filter((wk) => {
           const gamesForWeek = cachedGames.filter((g: IGame) => {
             const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
             return !Number.isNaN(num) && num === wk;
           });
-          const firstUpcoming = gamesForWeek.some((g) => {
-            const dt = parseGameDateTime(
-              g.gameDate as string,
-              g.gameTime as string
-            );
-            return now <= new Date(dt.getTime() + 15 * 60 * 1000);
-          });
-          return { wk, hasUpcoming: firstUpcoming };
+          if (!gamesForWeek.length) return false;
+          return gamesForWeek.every((g) => getGameStatus(g) === "completed");
         });
-        const upcoming = weeksWithKickoffs.find((w) => w.hasUpcoming)?.wk;
-        const chosen = upcoming ?? Math.max(...uniqueWeeks);
-        setCurrentWeek(chosen);
-        setSelectedWeek(chosen);
+        const lastCompleted = completedWeeks.length
+          ? Math.max(...completedWeeks)
+          : 0;
+        const nextCandidate = lastCompleted + 1;
+        const hasNext = uniqueWeeks.includes(nextCandidate);
+        // Fallback to first active week, else max
+        const firstActiveWeek = uniqueWeeks.find((wk) => {
+          const gamesForWeek = cachedGames.filter((g: IGame) => {
+            const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
+            return !Number.isNaN(num) && num === wk;
+          });
+          if (gamesForWeek.length === 0) return false;
+          return !gamesForWeek.every((g) => getGameStatus(g) === "completed");
+        });
+        const chosen = hasNext
+          ? nextCandidate
+          : firstActiveWeek ?? Math.max(...uniqueWeeks);
+        // Respect URL week param if valid; if that week is fully completed and a next week exists, jump to next
+        const urlWeek = Number(searchParams.get("week") || NaN);
+        const isUrlWeekValid = Number.isFinite(urlWeek) && uniqueWeeks.includes(urlWeek);
+        const urlWeekCompleted = isUrlWeekValid
+          ? cachedGames
+              .filter((g: IGame) => Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN) === urlWeek)
+              .every((g) => getGameStatus(g) === "completed")
+          : false;
+        const initial = isUrlWeekValid
+          ? urlWeekCompleted && hasNext
+            ? nextCandidate
+            : urlWeek
+          : chosen;
+        setCurrentWeek(initial);
+        setSelectedWeek(initial);
       }
       return () => {
         active = false;
@@ -282,26 +334,45 @@ const Picks = () => {
         if (weekNums.length) {
           const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
           setAvailableWeeks(uniqueWeeks);
-          // Determine the most relevant week (current/upcoming if possible)
-          const now = new Date();
-          const weeksWithKickoffs = uniqueWeeks.map((wk) => {
+          // Determine last fully completed week
+          const completedWeeks = uniqueWeeks.filter((wk) => {
             const gamesForWeek = gameList.filter((g: IGame) => {
               const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
               return !Number.isNaN(num) && num === wk;
             });
-            const firstUpcoming = gamesForWeek.some((g) => {
-              const dt = parseGameDateTime(
-                g.gameDate as string,
-                g.gameTime as string
-              );
-              return now <= new Date(dt.getTime() + 15 * 60 * 1000);
-            });
-            return { wk, hasUpcoming: firstUpcoming };
+            if (gamesForWeek.length === 0) return false;
+            return gamesForWeek.every((g) => getGameStatus(g) === "completed");
           });
-          const upcoming = weeksWithKickoffs.find((w) => w.hasUpcoming)?.wk;
-          const chosen = upcoming ?? Math.max(...uniqueWeeks);
-          setCurrentWeek(chosen);
-          setSelectedWeek(chosen);
+          const lastCompleted = completedWeeks.length
+            ? Math.max(...completedWeeks)
+            : 0;
+          const nextCandidate = lastCompleted + 1;
+          const hasNext = uniqueWeeks.includes(nextCandidate);
+          const firstActiveWeek = uniqueWeeks.find((wk) => {
+            const gamesForWeek = gameList.filter((g: IGame) => {
+              const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
+              return !Number.isNaN(num) && num === wk;
+            });
+            if (gamesForWeek.length === 0) return false;
+            return !gamesForWeek.every((g) => getGameStatus(g) === "completed");
+          });
+          const chosen = hasNext
+            ? nextCandidate
+            : firstActiveWeek ?? Math.max(...uniqueWeeks);
+          const urlWeek = Number(searchParams.get("week") || NaN);
+          const isUrlWeekValid = Number.isFinite(urlWeek) && uniqueWeeks.includes(urlWeek);
+          const urlWeekCompleted = isUrlWeekValid
+            ? gameList
+                .filter((g: IGame) => Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN) === urlWeek)
+                .every((g) => getGameStatus(g) === "completed")
+            : false;
+          const initial = isUrlWeekValid
+            ? urlWeekCompleted && hasNext
+              ? nextCandidate
+              : urlWeek
+            : chosen;
+          setCurrentWeek(initial);
+          setSelectedWeek(initial);
         }
       })
       .catch(() => {
@@ -313,6 +384,16 @@ const Picks = () => {
       active = false;
     };
   }, []);
+
+  // Keep URL week in sync when selection changes after initial load
+  useEffect(() => {
+    if (!selectedWeek) return;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("week", String(selectedWeek));
+      return next;
+    });
+  }, [selectedWeek, setSearchParams]);
 
   useEffect(() => {
     setHasSubmitted(false);
@@ -461,7 +542,7 @@ const Picks = () => {
 
     // Check if ALL games in the week have been completed
     const allGamesCompleted = currentWeekGames.every((g) => {
-      return isGameStarted(g.gameDate as string, g.gameTime as string);
+      return getGameStatus(g) === "completed";
     });
 
     // If all games are completed, picks are locked
@@ -474,13 +555,41 @@ const Picks = () => {
 
   const canSubmit = () => canEditPicks();
 
+  // Determine if any selected picks belong to games that are already locked/started
+  const getLockedSelectedGames = () => {
+    const byId = new Map<string, { gameDate: string; gameTime: string }>();
+    joinedCurrentWeekGames.forEach((g) => byId.set(g.id, { gameDate: g.gameDate, gameTime: g.gameTime }));
+    const locked: string[] = [];
+    Object.keys(picks).forEach((gameId) => {
+      const meta = byId.get(gameId);
+      if (!meta) return;
+      if (!canEditGame(meta.gameDate, meta.gameTime)) locked.push(gameId);
+    });
+    return locked;
+  };
+  const getUnlockedSelections = (): Record<string, string> => {
+    const byId = new Map<string, { gameDate: string; gameTime: string }>();
+    joinedCurrentWeekGames.forEach((g) => byId.set(g.id, { gameDate: g.gameDate, gameTime: g.gameTime }));
+    const result: Record<string, string> = {};
+    Object.entries(picks).forEach(([gameId, team]) => {
+      const meta = byId.get(gameId);
+      if (!meta) return;
+      if (canEditGame(meta.gameDate, meta.gameTime)) {
+        result[gameId] = team;
+      }
+    });
+    return result;
+  };
+
   const handleSubmit = async () => {
     const weekToSave = selectedWeek ?? currentWeek;
     if (!currentUser || !weekToSave) return;
+    const locked = getLockedSelectedGames();
+    const unlockedSelections = getUnlockedSelections();
     if (!canSubmit()) return;
     setIsSubmitting(true);
 
-    const selections: Record<string, string> = { ...picks };
+    const selections: Record<string, string> = { ...unlockedSelections };
 
     // Debug: print the exact payload being sent
     const payload = {
@@ -600,7 +709,17 @@ const Picks = () => {
                 </Label>
                 <Select
                   value={selectedWeek?.toString() || ""}
-                  onValueChange={(value) => setSelectedWeek(Number(value))}
+                  onValueChange={(value) => {
+                    const n = Number(value);
+                    setSelectedWeek(n);
+                    if (Number.isFinite(n)) {
+                      setSearchParams((prev) => {
+                        const next = new URLSearchParams(prev);
+                        next.set("week", String(n));
+                        return next;
+                      });
+                    }
+                  }}
                 >
                   <SelectTrigger className="w-24">
                     <SelectValue placeholder="Week" />
@@ -644,6 +763,7 @@ const Picks = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {joinedCurrentWeekGames.map((game) => {
               const gameStarted = isGameStarted(game.gameDate, game.gameTime);
+              const status = getGameStatus(game.raw as IGame);
               const canEdit =
                 canEditPicks() && canEditGame(game.gameDate, game.gameTime);
 
@@ -659,7 +779,7 @@ const Picks = () => {
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-sm text-muted-foreground">
                       {formatGameTime(game.gameDate, game.gameTime)}
-                      {gameStarted ? (
+                      {status === "completed" ? (
                         <Badge variant="secondary" className="ml-2 text-xs">
                           Completed
                         </Badge>
@@ -1099,7 +1219,12 @@ const Picks = () => {
       </Card>
 
       {/* Action buttons */}
-      <div className="flex gap-2 justify-end">
+      <div className="flex flex-col gap-2 items-end">
+        {getLockedSelectedGames().length > 0 && (
+          <div className="text-xs text-amber-700">
+            {getLockedSelectedGames().length} locked pick(s) will be excluded from submission.
+          </div>
+        )}
         <Button
           onClick={handleSubmit}
           disabled={isSubmitting || !canSubmit()}

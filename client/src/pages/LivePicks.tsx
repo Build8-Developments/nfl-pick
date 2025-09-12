@@ -1335,109 +1335,95 @@ const LivePicks = () => {
       )}
 
       {/* Prop Bet */}
-      {!loading &&
-        transformedPicks.length > 0 &&
-        (() => {
-          // Show all users who have a prop bet description, regardless of status
-          const usersWithProps = transformedPicks.filter(
-            (user) => user.propBet.description
-          );
-
-          return (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Clock className="h-5 w-5" />
-                  Prop Bet
-                </CardTitle>
-                <CardDescription>
-                  Proposition bets from players with live status
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {usersWithProps.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {usersWithProps.map((user) => {
-                      const isCurrentUser =
-                        currentUserPicks &&
-                        (typeof currentUserPicks.user === "string"
-                          ? currentUserPicks.user
-                          : currentUserPicks.user?._id) === user.userId;
-
-                      return (
-                        <div key={user.userId} className="relative">
-                          <div
-                            className={`bg-card p-4 rounded-lg shadow-md border ${
-                              isCurrentUser
-                                ? "border-yellow-400 ring-2 ring-yellow-400"
-                                : "border-border"
-                            }`}
-                          >
-                            {/* Status badge */}
-                            <div className="absolute -top-2 left-2">
-                              {user.propBet.status === "approved" && (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">
-                                  Approved
-                                </span>
-                              )}
-                              {user.propBet.status === "pending" && (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200">
-                                  Pending
-                                </span>
-                              )}
-                              {user.propBet.status === "rejected" && (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200">
-                                  Rejected
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex flex-col items-center gap-3 text-center">
-                              <img
-                                src={user.userAvatar}
-                                alt={user.userName}
-                                className="w-12 h-12 rounded-full object-cover border-2 border-border"
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement;
-                                  target.src = getUserAvatar(user.userName);
-                                }}
-                              />
-                              <div className="w-full">
-                                <p className="text-sm font-semibold text-foreground mb-2">
-                                  {user.propBet.description}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {user.userName}
-                                  {isCurrentUser && (
-                                    <span className="text-yellow-600 font-bold ml-1">
-                                      (YOU)
-                                    </span>
-                                  )}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                          {/* Show only green check when approved; no X */}
+      {!loading && transformedPicks.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Prop Bet
+            </CardTitle>
+            <CardDescription>
+              Proposition bets from players with live status
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {transformedPicks.map((user) => {
+                const hasProp = Boolean(user.propBet.description);
+                const isCurrentUser =
+                  currentUserPicks &&
+                  (typeof currentUserPicks.user === "string"
+                    ? currentUserPicks.user
+                    : currentUserPicks.user?._id) === user.userId;
+                return (
+                  <div key={user.userId} className="relative">
+                    <div
+                      className={`bg-card p-4 rounded-lg shadow-md border ${
+                        isCurrentUser
+                          ? "border-yellow-400 ring-2 ring-yellow-400"
+                          : "border-border"
+                      }`}
+                    >
+                      {/* Status badge */}
+                      {hasProp && (
+                        <div className="absolute -top-2 left-2">
                           {user.propBet.status === "approved" && (
-                            <div className="absolute -top-2 -right-2">
-                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
-                                <Check className="h-4 w-4 text-white" />
-                              </div>
-                            </div>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">
+                              Approved
+                            </span>
+                          )}
+                          {user.propBet.status === "pending" && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200">
+                              Pending
+                            </span>
+                          )}
+                          {user.propBet.status === "rejected" && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200">
+                              Rejected
+                            </span>
                           )}
                         </div>
-                      );
-                    })}
+                      )}
+                      <div className="flex flex-col items-center gap-3 text-center">
+                        <img
+                          src={user.userAvatar}
+                          alt={user.userName}
+                          className="w-12 h-12 rounded-full object-cover border-2 border-border"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = getUserAvatar(user.userName);
+                          }}
+                        />
+                        <div className="w-full">
+                          <p className="text-sm font-semibold text-foreground mb-2">
+                            {hasProp ? user.propBet.description : "No prop bet submitted"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {user.userName}
+                            {isCurrentUser && (
+                              <span className="text-yellow-600 font-bold ml-1">
+                                (YOU)
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Show only green check when approved; no X */}
+                    {hasProp && user.propBet.status === "approved" && (
+                      <div className="absolute -top-2 -right-2">
+                        <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
+                          <Check className="h-4 w-4 text-white" />
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">No prop bets yet.</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })()}
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Total Points */}
       {!loading && transformedPicks.length > 0 && (
