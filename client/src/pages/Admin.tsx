@@ -241,6 +241,14 @@ const Admin = () => {
     }
   }, [users]);
 
+  // Preload avatars when prop bets data changes
+  useEffect(() => {
+    if (propBets.length > 0) {
+      const avatars = propBets.map(propBet => propBet.user.avatar);
+      preloadAvatars(avatars);
+    }
+  }, [propBets]);
+
   const handleCreateUser = async () => {
     setCreateUserError(null);
     setCreateUserSuccess(null);
@@ -635,10 +643,21 @@ const Admin = () => {
                                 </div>
                               )}
                               <div className="text-sm text-muted-foreground mt-2">
-                                <div>
-                                  Submitted by{" "}
-                                  <strong>{propBet.user.username}</strong> •
-                                  Week {propBet.week}
+                                <div className="flex items-center gap-2">
+                                  <img
+                                    src={getUserAvatar(propBet.user.avatar)}
+                                    alt={propBet.user.username}
+                                    className="w-6 h-6 rounded-full object-cover border border-gray-200"
+                                    onError={(e) => {
+                                      const target = e.target as HTMLImageElement;
+                                      target.src = getUserAvatar();
+                                    }}
+                                  />
+                                  <span>
+                                    Submitted by{" "}
+                                    <strong>{propBet.user.username}</strong> •
+                                    Week {propBet.week}
+                                  </span>
                                 </div>
                                 <div>
                                   Submitted:{" "}

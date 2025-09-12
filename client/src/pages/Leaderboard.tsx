@@ -68,6 +68,31 @@ const Leaderboard = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [justUpdated, setJustUpdated] = useState(false);
 
+  // Calculate current NFL week based on season start date
+  const getCurrentSeason = () => {
+    const now = new Date();
+    // NFL season mostly spans Sep-Feb, use year of September for season label
+    return now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+  };
+
+  const getSeasonStartDate = (season: number) => {
+    // NFL season typically starts on the first Thursday of September
+    const september = new Date(season, 8, 1); // September 1st
+    const dayOfWeek = september.getDay(); // 0 = Sunday, 1 = Monday, ..., 4 = Thursday
+    const daysToThursday = (4 - dayOfWeek + 7) % 7;
+    const firstThursday = new Date(september.getTime() + daysToThursday * 24 * 60 * 60 * 1000);
+    return firstThursday;
+  };
+
+  const computeCurrentWeek = (season: number) => {
+    const start = getSeasonStartDate(season);
+    const now = new Date();
+    const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+    const diffWeeks = Math.floor((now.getTime() - start.getTime()) / msPerWeek);
+    // Week indexing starts at 1; clamp between 1 and 18 for regular season
+    return Math.min(Math.max(diffWeeks + 1, 1), 18);
+  };
+
   // Load available weeks and current week
   useEffect(() => {
     const loadWeeks = async () => {
@@ -93,9 +118,14 @@ const Leaderboard = () => {
         );
         setAvailableWeeks(allWeeks);
 
-        // Set current week to the latest available
+        // Calculate the actual current NFL week
+        const currentSeason = getCurrentSeason();
+        const computedCurrentWeek = computeCurrentWeek(currentSeason);
+        
+        // Default to computed current week (or first available week if current week doesn't exist)
         if (allWeeks.length > 0) {
-          setSelectedWeek(Math.max(...allWeeks));
+          const defaultWeek = allWeeks.includes(computedCurrentWeek) ? computedCurrentWeek : allWeeks[0];
+          setSelectedWeek(defaultWeek);
         }
       } catch (err) {
         console.error("Error loading weeks:", err);
