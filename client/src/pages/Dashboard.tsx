@@ -1,6 +1,7 @@
 import { useAuth } from "../contexts/useAuth";
 import { useEffect, useState } from "react";
 import { dashboardApi, apiClient } from "@/lib/api";
+import { useUserAvatars } from "../hooks/useAvatarService";
 import {
   Card,
   CardContent,

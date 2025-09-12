@@ -30,7 +30,7 @@ import {
   Clock,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
-import { computeAvatarUrl } from "@/lib/avatarUtils";
+import { getUserAvatar, preloadAvatars } from "@/lib/avatarUtils";
 import type { ITeam } from "@/types/team.type";
 import type { IPlayer } from "@/types/player.type";
 import type { IGame } from "@/types/game.type";
@@ -568,6 +568,14 @@ const LivePicks = () => {
     fetchUsers();
   }, []);
 
+  // Preload avatars when users data changes
+  useEffect(() => {
+    if (users.length > 0) {
+      const avatars = users.map(user => user.avatar);
+      preloadAvatars(avatars);
+    }
+  }, [users]);
+
   // Function to fetch individual player data
   const fetchPlayerData = useCallback(
     async (playerId: string) => {
@@ -592,15 +600,15 @@ const LivePicks = () => {
   );
 
   // Helper function to get user avatar from backend
-  const getUserAvatar = useCallback(
+  const getUserAvatarFromName = useCallback(
     (userName: string) => {
       const user = users.find((u) => u.username === userName);
       if (user && user.avatar) {
-        return computeAvatarUrl(user.avatar);
+        return getUserAvatar(user.avatar);
       }
 
       // Fallback to default avatar if user not found or no avatar
-      return "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face";
+      return getUserAvatar();
     },
     [users]
   );
@@ -773,13 +781,13 @@ const LivePicks = () => {
           // If user is just an ID string, try to find the user in our users list
           const foundUser = users.find((u) => u._id === p.user);
           if (foundUser?.avatar) {
-            return computeAvatarUrl(foundUser.avatar);
+            return getUserAvatar(foundUser.avatar);
           }
-          return getUserAvatar("Unknown User");
+          return getUserAvatarFromName("Unknown User");
         } else if (p.user?.avatar) {
-          return computeAvatarUrl(p.user.avatar);
+          return getUserAvatar(p.user.avatar);
         } else {
-          return getUserAvatar(userName || "Unknown User");
+          return getUserAvatarFromName(userName || "Unknown User");
         }
       })();
       return {
@@ -813,7 +821,7 @@ const LivePicks = () => {
     currentUserPicks,
     getPlayerById,
     getPlayerHeadshot,
-    getUserAvatar,
+    getUserAvatarFromName,
     playerData,
     hasCurrentUserSubmitted,
     users,
@@ -1001,7 +1009,7 @@ const LivePicks = () => {
                       }`}
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
-                        target.src = getUserAvatar(user.userName);
+                        target.src = getUserAvatarFromName(user.userName);
                       }}
                     />
                     {isCurrentUser && (
@@ -1263,7 +1271,7 @@ const LivePicks = () => {
                             className="w-16 h-16 rounded-full object-cover border-3 border-border shadow-md"
                             onError={(e) => {
                               const target = e.target as HTMLImageElement;
-                              target.src = getUserAvatar(user.userName);
+                              target.src = getUserAvatarFromName(user.userName);
                             }}
                           />
                         ) : (
@@ -1391,7 +1399,7 @@ const LivePicks = () => {
                           className="w-12 h-12 rounded-full object-cover border-2 border-border"
                           onError={(e) => {
                             const target = e.target as HTMLImageElement;
-                            target.src = getUserAvatar(user.userName);
+                            target.src = getUserAvatarFromName(user.userName);
                           }}
                         />
                         <div className="w-full">
@@ -1476,7 +1484,7 @@ const LivePicks = () => {
                         }`}
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
-                          target.src = getUserAvatar(user.userName);
+                          target.src = getUserAvatarFromName(user.userName);
                         }}
                       />
                       <div className="text-center">
@@ -1666,7 +1674,7 @@ const LivePicks = () => {
                               className="w-10 h-10 rounded-full object-cover border-2 border-primary"
                               onError={(e) => {
                                 const target = e.target as HTMLImageElement;
-                                target.src = getUserAvatar(user.userName);
+                                target.src = getUserAvatarFromName(user.userName);
                               }}
                             />
                             <div>
@@ -1790,7 +1798,7 @@ const LivePicks = () => {
                                 className="w-8 h-8 rounded-full object-cover border-2 border-primary"
                                 onError={(e) => {
                                   const target = e.target as HTMLImageElement;
-                                  target.src = getUserAvatar(user.userName);
+                                  target.src = getUserAvatarFromName(user.userName);
                                 }}
                               />
                               <span className="font-semibold">
@@ -1862,7 +1870,7 @@ const LivePicks = () => {
                               className="w-8 h-8 rounded-full object-cover border-2 border-primary"
                               onError={(e) => {
                                 const target = e.target as HTMLImageElement;
-                                target.src = getUserAvatar(user.userName);
+                                target.src = getUserAvatarFromName(user.userName);
                               }}
                             />
                             <span className="font-semibold">
@@ -1877,7 +1885,7 @@ const LivePicks = () => {
                                 className="w-20 h-20 rounded-full mx-auto mb-2 object-cover border-2 border-border"
                                 onError={(e) => {
                                   const target = e.target as HTMLImageElement;
-                                  target.src = getUserAvatar(user.userName);
+                                  target.src = getUserAvatarFromName(user.userName);
                                 }}
                               />
                             ) : (
@@ -1983,7 +1991,7 @@ const LivePicks = () => {
                                 className="w-8 h-8 rounded-full object-cover border-2 border-primary"
                                 onError={(e) => {
                                   const target = e.target as HTMLImageElement;
-                                  target.src = getUserAvatar(user.userName);
+                                  target.src = getUserAvatarFromName(user.userName);
                                 }}
                               />
                               <span className="font-semibold">

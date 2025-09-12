@@ -261,51 +261,21 @@ const Picks = () => {
         .map((n) => Number(n))
         .filter((n) => !Number.isNaN(n));
 
-      if (weekNums.length) {
-        const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
-        setAvailableWeeks(uniqueWeeks);
-        // Determine last fully completed week
-        const completedWeeks = uniqueWeeks.filter((wk) => {
-          const gamesForWeek = cachedGames.filter((g: IGame) => {
-            const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
-            return !Number.isNaN(num) && num === wk;
-          });
-          if (!gamesForWeek.length) return false;
-          return gamesForWeek.every((g) => getGameStatus(g) === "completed");
-        });
-        const lastCompleted = completedWeeks.length
-          ? Math.max(...completedWeeks)
-          : 0;
-        const nextCandidate = lastCompleted + 1;
-        const hasNext = uniqueWeeks.includes(nextCandidate);
-        // Fallback to first active week, else max
-        const firstActiveWeek = uniqueWeeks.find((wk) => {
-          const gamesForWeek = cachedGames.filter((g: IGame) => {
-            const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
-            return !Number.isNaN(num) && num === wk;
-          });
-          if (gamesForWeek.length === 0) return false;
-          return !gamesForWeek.every((g) => getGameStatus(g) === "completed");
-        });
-        const chosen = hasNext
-          ? nextCandidate
-          : firstActiveWeek ?? Math.max(...uniqueWeeks);
-        // Respect URL week param if valid; if that week is fully completed and a next week exists, jump to next
-        const urlWeek = Number(searchParams.get("week") || NaN);
-        const isUrlWeekValid = Number.isFinite(urlWeek) && uniqueWeeks.includes(urlWeek);
-        const urlWeekCompleted = isUrlWeekValid
-          ? cachedGames
-              .filter((g: IGame) => Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN) === urlWeek)
-              .every((g) => getGameStatus(g) === "completed")
-          : false;
-        const initial = isUrlWeekValid
-          ? urlWeekCompleted && hasNext
-            ? nextCandidate
-            : urlWeek
-          : chosen;
-        setCurrentWeek(initial);
-        setSelectedWeek(initial);
-      }
+        if (weekNums.length) {
+          const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
+          setAvailableWeeks(uniqueWeeks);
+          
+          // Default to week 2, but respect URL week param if valid
+          const urlWeek = Number(searchParams.get("week") || NaN);
+          const isUrlWeekValid = Number.isFinite(urlWeek) && uniqueWeeks.includes(urlWeek);
+          
+          // Use URL week if valid, otherwise default to week 2 (or first available week if week 2 doesn't exist)
+          const defaultWeek = uniqueWeeks.includes(2) ? 2 : uniqueWeeks[0] || 1;
+          const initial = isUrlWeekValid ? urlWeek : defaultWeek;
+          
+          setCurrentWeek(initial);
+          setSelectedWeek(initial);
+        }
       return () => {
         active = false;
       };
@@ -334,43 +304,15 @@ const Picks = () => {
         if (weekNums.length) {
           const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
           setAvailableWeeks(uniqueWeeks);
-          // Determine last fully completed week
-          const completedWeeks = uniqueWeeks.filter((wk) => {
-            const gamesForWeek = gameList.filter((g: IGame) => {
-              const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
-              return !Number.isNaN(num) && num === wk;
-            });
-            if (gamesForWeek.length === 0) return false;
-            return gamesForWeek.every((g) => getGameStatus(g) === "completed");
-          });
-          const lastCompleted = completedWeeks.length
-            ? Math.max(...completedWeeks)
-            : 0;
-          const nextCandidate = lastCompleted + 1;
-          const hasNext = uniqueWeeks.includes(nextCandidate);
-          const firstActiveWeek = uniqueWeeks.find((wk) => {
-            const gamesForWeek = gameList.filter((g: IGame) => {
-              const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
-              return !Number.isNaN(num) && num === wk;
-            });
-            if (gamesForWeek.length === 0) return false;
-            return !gamesForWeek.every((g) => getGameStatus(g) === "completed");
-          });
-          const chosen = hasNext
-            ? nextCandidate
-            : firstActiveWeek ?? Math.max(...uniqueWeeks);
+          
+          // Default to week 2, but respect URL week param if valid
           const urlWeek = Number(searchParams.get("week") || NaN);
           const isUrlWeekValid = Number.isFinite(urlWeek) && uniqueWeeks.includes(urlWeek);
-          const urlWeekCompleted = isUrlWeekValid
-            ? gameList
-                .filter((g: IGame) => Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN) === urlWeek)
-                .every((g) => getGameStatus(g) === "completed")
-            : false;
-          const initial = isUrlWeekValid
-            ? urlWeekCompleted && hasNext
-              ? nextCandidate
-              : urlWeek
-            : chosen;
+          
+          // Use URL week if valid, otherwise default to week 2 (or first available week if week 2 doesn't exist)
+          const defaultWeek = uniqueWeeks.includes(2) ? 2 : uniqueWeeks[0] || 1;
+          const initial = isUrlWeekValid ? urlWeek : defaultWeek;
+          
           setCurrentWeek(initial);
           setSelectedWeek(initial);
         }

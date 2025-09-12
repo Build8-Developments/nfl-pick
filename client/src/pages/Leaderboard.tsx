@@ -21,7 +21,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
-import { computeAvatarUrl } from "@/lib/avatarUtils";
+import { getUserAvatar, preloadAvatars } from "@/lib/avatarUtils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Select,
@@ -208,14 +208,20 @@ const Leaderboard = () => {
     return "outline";
   };
 
-  // Helper function to get user avatar
-  const getUserAvatar = (avatar?: string) => {
-    if (avatar) {
-      return computeAvatarUrl(avatar);
+  // Preload avatars when data changes
+  useEffect(() => {
+    if (seasonStandings.length > 0) {
+      const avatars = seasonStandings.map(user => user.avatar);
+      preloadAvatars(avatars);
     }
-    // Fallback to default avatar
-    return "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face";
-  };
+  }, [seasonStandings]);
+
+  useEffect(() => {
+    if (weeklyStandings.length > 0) {
+      const avatars = weeklyStandings.map(user => user.avatar);
+      preloadAvatars(avatars);
+    }
+  }, [weeklyStandings]);
 
   return (
     <div className="space-y-6">

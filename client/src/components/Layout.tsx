@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { computeAvatarUrl } from "../lib/avatarUtils";
+import { getUserAvatar } from "../lib/avatarUtils";
 
 const Layout = () => {
   const { currentUser, logout } = useAuth();
@@ -42,7 +42,7 @@ const Layout = () => {
   };
 
 
-  const avatarUrl = computeAvatarUrl(currentUser?.avatar);
+  const avatarUrl = getUserAvatar(currentUser?.avatar);
 
   return (
     <div className="min-h-screen bg-background">

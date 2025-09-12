@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 // Removed mock data import - using real API data
 import { apiClient, apiOrigin } from "../lib/api";
-import { computeAvatarUrl } from "../lib/avatarUtils";
+import { getUserAvatar, preloadAvatars } from "../lib/avatarUtils";
 
 type ApiSuccess<T> = { success: true; data: T; message?: string };
 
@@ -232,6 +232,14 @@ const Admin = () => {
     fetchGames();
     fetchSubmittedPicksCount();
   }, [selectedWeek, fetchSubmittedPicksCount]);
+
+  // Preload avatars when users data changes
+  useEffect(() => {
+    if (users.length > 0) {
+      const avatars = users.map(user => user.avatar);
+      preloadAvatars(avatars);
+    }
+  }, [users]);
 
   const handleCreateUser = async () => {
     setCreateUserError(null);
@@ -923,7 +931,7 @@ const Admin = () => {
                         <tr key={u._id} className="border-b">
                           <td className="py-2 pr-4">
                             <img
-                              src={computeAvatarUrl(u.avatar)}
+                              src={getUserAvatar(u.avatar)}
                               alt="avatar"
                               className="h-8 w-8 rounded-full object-cover border"
                             />
