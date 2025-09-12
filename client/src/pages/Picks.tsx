@@ -83,6 +83,31 @@ const Picks = () => {
   };
   type ApiWrapped<T> = { success?: boolean; data?: T };
 
+  // Calculate current NFL week based on season start date
+  const getCurrentSeason = () => {
+    const now = new Date();
+    // NFL season mostly spans Sep-Feb, use year of September for season label
+    return now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+  };
+
+  const getSeasonStartDate = (season: number) => {
+    // NFL season typically starts on the first Thursday of September
+    const september = new Date(season, 8, 1); // September 1st
+    const dayOfWeek = september.getDay(); // 0 = Sunday, 1 = Monday, ..., 4 = Thursday
+    const daysToThursday = (4 - dayOfWeek + 7) % 7;
+    const firstThursday = new Date(september.getTime() + daysToThursday * 24 * 60 * 60 * 1000);
+    return firstThursday;
+  };
+
+  const computeCurrentWeek = (season: number) => {
+    const start = getSeasonStartDate(season);
+    const now = new Date();
+    const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+    const diffWeeks = Math.floor((now.getTime() - start.getTime()) / msPerWeek);
+    // Week indexing starts at 1; clamp between 1 and 18 for regular season
+    return Math.min(Math.max(diffWeeks + 1, 1), 18);
+  };
+
   const parseGameDateTime = (gameDate: string, gameTime: string) => {
     const yyyy = Number(gameDate.slice(0, 4));
     const mm = Number(gameDate.slice(4, 6));
@@ -265,12 +290,16 @@ const Picks = () => {
           const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
           setAvailableWeeks(uniqueWeeks);
           
-          // Default to week 2, but respect URL week param if valid
+          // Calculate the actual current NFL week
+          const currentSeason = getCurrentSeason();
+          const computedCurrentWeek = computeCurrentWeek(currentSeason);
+          
+          // Default to computed current week, but respect URL week param if valid
           const urlWeek = Number(searchParams.get("week") || NaN);
           const isUrlWeekValid = Number.isFinite(urlWeek) && uniqueWeeks.includes(urlWeek);
           
-          // Use URL week if valid, otherwise default to week 2 (or first available week if week 2 doesn't exist)
-          const defaultWeek = uniqueWeeks.includes(2) ? 2 : uniqueWeeks[0] || 1;
+          // Use URL week if valid, otherwise default to computed current week (or first available week if current week doesn't exist)
+          const defaultWeek = uniqueWeeks.includes(computedCurrentWeek) ? computedCurrentWeek : uniqueWeeks[0] || 1;
           const initial = isUrlWeekValid ? urlWeek : defaultWeek;
           
           setCurrentWeek(initial);
@@ -305,12 +334,16 @@ const Picks = () => {
           const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
           setAvailableWeeks(uniqueWeeks);
           
-          // Default to week 2, but respect URL week param if valid
+          // Calculate the actual current NFL week
+          const currentSeason = getCurrentSeason();
+          const computedCurrentWeek = computeCurrentWeek(currentSeason);
+          
+          // Default to computed current week, but respect URL week param if valid
           const urlWeek = Number(searchParams.get("week") || NaN);
           const isUrlWeekValid = Number.isFinite(urlWeek) && uniqueWeeks.includes(urlWeek);
           
-          // Use URL week if valid, otherwise default to week 2 (or first available week if week 2 doesn't exist)
-          const defaultWeek = uniqueWeeks.includes(2) ? 2 : uniqueWeeks[0] || 1;
+          // Use URL week if valid, otherwise default to computed current week (or first available week if current week doesn't exist)
+          const defaultWeek = uniqueWeeks.includes(computedCurrentWeek) ? computedCurrentWeek : uniqueWeeks[0] || 1;
           const initial = isUrlWeekValid ? urlWeek : defaultWeek;
           
           setCurrentWeek(initial);
