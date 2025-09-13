@@ -1,7 +1,6 @@
 import { useAuth } from "../contexts/useAuth";
 import { useEffect, useState } from "react";
 import { dashboardApi, apiClient } from "@/lib/api";
-import { useUserAvatars } from "../hooks/useAvatarService";
 import {
   Card,
   CardContent,
@@ -234,7 +233,13 @@ const Dashboard = () => {
         };
 
         // Determine per-game status
-        const getGameStatus = (game: { gameTime: string; gameStatus?: string; gameStatusCode?: string; gameDate?: string; gameTimeEpoch?: string }) => {
+        const getGameStatus = (game: {
+          gameTime: string;
+          gameStatus?: string;
+          gameStatusCode?: string;
+          gameDate?: string;
+          gameTimeEpoch?: string;
+        }) => {
           if (game.gameStatus) {
             const status = game.gameStatus.toLowerCase();
             if (
@@ -270,8 +275,10 @@ const Dashboard = () => {
           })();
           const dt = Number.isFinite(epochMs)
             ? new Date(epochMs)
-            : parseGameDateTime(game.gameDate as string, game.gameTime as string) ||
-              new Date(game.gameTime);
+            : parseGameDateTime(
+                game.gameDate as string,
+                game.gameTime as string
+              ) || new Date(game.gameTime);
           if (dt > now) return "scheduled" as const;
           const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
           if (dt > sixHoursAgo) return "in_progress" as const;
@@ -294,7 +301,9 @@ const Dashboard = () => {
             return !Number.isNaN(num) && num === wk;
           });
           if (!gamesForWeek.length) return false;
-          return !gamesForWeek.every((g) => getGameStatus(g as any) === "completed");
+          return !gamesForWeek.every(
+            (g) => getGameStatus(g as any) === "completed"
+          );
         });
 
         // Determine last fully completed week from games only (not picks)
@@ -327,14 +336,16 @@ const Dashboard = () => {
 
         // Target week is strictly the week after the last fully completed week, if present
         const nextWeekCandidate = lastCompletedWeek + 1;
-        const hasNextWeekInSchedule = uniqueWeeksFromGames.includes(nextWeekCandidate);
+        const hasNextWeekInSchedule =
+          uniqueWeeksFromGames.includes(nextWeekCandidate);
 
         const computedCurrentWeek = (() => {
           // Only advance to lastCompleted + 1 if at least one full week is completed
           if (lastCompletedWeek > 0 && hasNextWeekInSchedule)
             return nextWeekCandidate;
           if (firstActiveWeek != null) return firstActiveWeek;
-          if (uniqueWeeksFromGames.length > 0) return Math.max(...uniqueWeeksFromGames);
+          if (uniqueWeeksFromGames.length > 0)
+            return Math.max(...uniqueWeeksFromGames);
           return upcomingWeek ?? 1;
         })();
 
@@ -352,7 +363,7 @@ const Dashboard = () => {
 
         // Populate history weeks from finalized picks
         const weeksWithPicks = Array.isArray(weeksRes.data)
-          ? ((weeksRes.data as number[]).sort((a, b) => a - b))
+          ? (weeksRes.data as number[]).sort((a, b) => a - b)
           : [];
         setHistoryWeeks(weeksWithPicks);
         const defaultHistoryWeek = weeksWithPicks.length
@@ -528,7 +539,9 @@ const Dashboard = () => {
             <p className="text-xs text-muted-foreground">
               {(() => {
                 const gamesForWeek = games.filter((g) => {
-                  const num = Number((g.gameWeek || "").match(/\d+/)?.[0] ?? NaN);
+                  const num = Number(
+                    (g.gameWeek || "").match(/\d+/)?.[0] ?? NaN
+                  );
                   return !Number.isNaN(num) && num === currentWeek;
                 });
                 if (gamesForWeek.length) return `${gamesForWeek.length} games`;
@@ -635,13 +648,18 @@ const Dashboard = () => {
             <TrendingUp className="h-5 w-5" />
             Pick History
           </CardTitle>
-          <CardDescription>View submitted picks from previous weeks</CardDescription>
+          <CardDescription>
+            View submitted picks from previous weeks
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {historyWeeks.length > 0 ? (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
-                <Label htmlFor="history-week" className="text-sm text-muted-foreground">
+                <Label
+                  htmlFor="history-week"
+                  className="text-sm text-muted-foreground"
+                >
                   Week
                 </Label>
                 <Select
@@ -675,7 +693,8 @@ const Dashboard = () => {
                   <div className="flex justify-between">
                     <span>Spread Picks:</span>
                     <span>
-                      {Object.keys(historyPick.selections || {}).length} submitted
+                      {Object.keys(historyPick.selections || {}).length}{" "}
+                      submitted
                     </span>
                   </div>
                   <div className="flex justify-between">
