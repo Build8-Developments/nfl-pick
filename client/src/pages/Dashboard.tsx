@@ -226,10 +226,46 @@ const Dashboard = () => {
               if (mer === "p" && hours !== 12) hours += 12;
               if (mer === "a" && hours === 12) hours = 0;
             }
-            return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
+
+            // Create date in EST/EDT timezone
+            // NFL games are scheduled in Eastern Time (EST/EDT)
+            const estDate = new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
+
+            // Convert to UTC by adjusting for Eastern timezone offset
+            // EST is UTC-5, EDT is UTC-4
+            // We need to determine if it's EST or EDT based on the date
+            const isDST = isEasternDaylightTime(estDate);
+            const offsetHours = isDST ? 4 : 5; // EDT is UTC-4, EST is UTC-5
+
+            // Create the actual game time in UTC
+            const utcGameTime = new Date(
+              estDate.getTime() + offsetHours * 60 * 60 * 1000
+            );
+
+            return utcGameTime;
           } catch {
             return null;
           }
+        };
+
+        // Helper function to determine if a date is in Eastern Daylight Time
+        const isEasternDaylightTime = (date: Date) => {
+          // DST in the US typically runs from second Sunday in March to first Sunday in November
+          const year = date.getFullYear();
+
+          // Second Sunday in March
+          const marchSecondSunday = new Date(year, 2, 1); // March 1st
+          const marchDayOfWeek = marchSecondSunday.getDay();
+          const daysToSecondSunday = ((7 - marchDayOfWeek + 7) % 7) + 7; // Second Sunday
+          marchSecondSunday.setDate(1 + daysToSecondSunday);
+
+          // First Sunday in November
+          const novemberFirstSunday = new Date(year, 10, 1); // November 1st
+          const novemberDayOfWeek = novemberFirstSunday.getDay();
+          const daysToFirstSunday = (7 - novemberDayOfWeek) % 7;
+          novemberFirstSunday.setDate(1 + daysToFirstSunday);
+
+          return date >= marchSecondSunday && date < novemberFirstSunday;
         };
 
         // Determine per-game status

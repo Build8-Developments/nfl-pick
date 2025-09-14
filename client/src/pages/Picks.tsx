@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/useAuth";
 import {
@@ -101,33 +101,72 @@ const Picks = () => {
     return firstThursday;
   };
 
-  const computeCurrentWeek = (season: number) => {
+  const computeCurrentWeek = useCallback((season: number) => {
     const start = getSeasonStartDate(season);
     const now = new Date();
     const msPerWeek = 7 * 24 * 60 * 60 * 1000;
     const diffWeeks = Math.floor((now.getTime() - start.getTime()) / msPerWeek);
     // Week indexing starts at 1; clamp between 1 and 18 for regular season
     return Math.min(Math.max(diffWeeks + 1, 1), 18);
-  };
+  }, []);
 
-  const parseGameDateTime = (gameDate: string, gameTime: string) => {
-    const yyyy = Number(gameDate.slice(0, 4));
-    const mm = Number(gameDate.slice(4, 6));
-    const dd = Number(gameDate.slice(6, 8));
-    const timeMatch = gameTime
-      .trim()
-      .match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
-    let hours = 12;
-    let minutes = 0;
-    if (timeMatch) {
-      hours = Number(timeMatch[1]);
-      minutes = timeMatch[2] ? Number(timeMatch[2]) : 0;
-      const meridiem = timeMatch[3].toLowerCase();
-      if (meridiem === "p" && hours !== 12) hours += 12;
-      if (meridiem === "a" && hours === 12) hours = 0;
-    }
-    return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
-  };
+  // Helper function to determine if a date is in Eastern Daylight Time
+  const isEasternDaylightTime = useCallback((date: Date) => {
+    // DST in the US typically runs from second Sunday in March to first Sunday in November
+    const year = date.getFullYear();
+
+    // Second Sunday in March
+    const marchSecondSunday = new Date(year, 2, 1); // March 1st
+    const marchDayOfWeek = marchSecondSunday.getDay();
+    const daysToSecondSunday = ((7 - marchDayOfWeek + 7) % 7) + 7; // Second Sunday
+    marchSecondSunday.setDate(1 + daysToSecondSunday);
+
+    // First Sunday in November
+    const novemberFirstSunday = new Date(year, 10, 1); // November 1st
+    const novemberDayOfWeek = novemberFirstSunday.getDay();
+    const daysToFirstSunday = (7 - novemberDayOfWeek) % 7;
+    novemberFirstSunday.setDate(1 + daysToFirstSunday);
+
+    return date >= marchSecondSunday && date < novemberFirstSunday;
+  }, []);
+
+  const parseGameDateTime = useCallback(
+    (gameDate: string, gameTime: string) => {
+      const yyyy = Number(gameDate.slice(0, 4));
+      const mm = Number(gameDate.slice(4, 6));
+      const dd = Number(gameDate.slice(6, 8));
+      const timeMatch = gameTime
+        .trim()
+        .match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
+      let hours = 12;
+      let minutes = 0;
+      if (timeMatch) {
+        hours = Number(timeMatch[1]);
+        minutes = timeMatch[2] ? Number(timeMatch[2]) : 0;
+        const meridiem = timeMatch[3].toLowerCase();
+        if (meridiem === "p" && hours !== 12) hours += 12;
+        if (meridiem === "a" && hours === 12) hours = 0;
+      }
+
+      // Create date in EST/EDT timezone
+      // NFL games are scheduled in Eastern Time (EST/EDT)
+      const estDate = new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
+
+      // Convert to UTC by adjusting for Eastern timezone offset
+      // EST is UTC-5, EDT is UTC-4
+      // We need to determine if it's EST or EDT based on the date
+      const isDST = isEasternDaylightTime(estDate);
+      const offsetHours = isDST ? 4 : 5; // EDT is UTC-4, EST is UTC-5
+
+      // Create the actual game time in UTC
+      const utcGameTime = new Date(
+        estDate.getTime() + offsetHours * 60 * 60 * 1000
+      );
+
+      return utcGameTime;
+    },
+    [isEasternDaylightTime]
+  );
 
   const teamIdToTeam = useMemo(() => {
     return new Map<string, ITeam>(teams.map((t) => [t.teamID, t]));
@@ -159,7 +198,7 @@ const Picks = () => {
         const dateB = parseGameDateTime(b.gameDate, b.gameTime);
         return dateA.getTime() - dateB.getTime();
       });
-  }, [games, teamIdToTeam, selectedWeek]);
+  }, [games, teamIdToTeam, selectedWeek, parseGameDateTime]);
 
   const getGameStatus = (game: IGame) => {
     const statusRaw = (game.gameStatus || "").toLowerCase();
@@ -183,7 +222,7 @@ const Picks = () => {
       )
         return "scheduled" as const;
     }
-    const now = new Date();
+    const now = new Date(); // Current UTC time
     const dt = parseGameDateTime(
       game.gameDate as string,
       game.gameTime as string
@@ -369,7 +408,7 @@ const Picks = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [computeCurrentWeek, searchParams]);
 
   // Keep URL week in sync when selection changes after initial load
   useEffect(() => {
@@ -487,18 +526,29 @@ const Picks = () => {
 
   const formatGameTime = (gameDate: string, gameTime: string) => {
     const date = parseGameDateTime(gameDate, gameTime);
-    return date.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
+
+    // Convert UTC time back to Eastern time for display
+    const estDate = new Date(
+      date.getTime() - (isEasternDaylightTime(date) ? 4 : 5) * 60 * 60 * 1000
+    );
+
+    const timezone = isEasternDaylightTime(date) ? "EDT" : "EST";
+
+    return (
+      estDate.toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: "America/New_York", // This ensures proper EST/EDT handling
+      }) + ` ${timezone}`
+    );
   };
 
   const isGameStarted = (gameDate: string, gameTime: string) => {
     const gameDateTime = parseGameDateTime(gameDate, gameTime);
-    const now = new Date();
+    const now = new Date(); // Current UTC time
     const bufferMinutes = 15;
     const cutoffTime = new Date(
       gameDateTime.getTime() + bufferMinutes * 60 * 1000
@@ -508,7 +558,7 @@ const Picks = () => {
 
   const canEditGame = (gameDate: string, gameTime: string) => {
     const gameDateTime = parseGameDateTime(gameDate, gameTime);
-    const now = new Date();
+    const now = new Date(); // Current UTC time
     const lockoutMinutes = 10;
     const lockoutTime = new Date(
       gameDateTime.getTime() - lockoutMinutes * 60 * 1000

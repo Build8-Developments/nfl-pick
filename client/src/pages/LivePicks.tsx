@@ -92,22 +92,61 @@ const LivePicks = () => {
     }
   }, [currentUser, navigate]);
 
-  const parseGameDateTime = (gameDate: string, gameTime: string) => {
-    const yyyy = Number(gameDate.slice(0, 4));
-    const mm = Number(gameDate.slice(4, 6));
-    const dd = Number(gameDate.slice(6, 8));
-    const m = gameTime.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
-    let hours = 12;
-    let minutes = 0;
-    if (m) {
-      hours = Number(m[1]);
-      minutes = m[2] ? Number(m[2]) : 0;
-      const meridiem = (m?.[3] ?? "a").toLowerCase();
-      if (meridiem === "p" && hours !== 12) hours += 12;
-      if (meridiem === "a" && hours === 12) hours = 0;
-    }
-    return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
+  // Helper function to determine if a date is in Eastern Daylight Time
+  const isEasternDaylightTime = (date: Date) => {
+    // DST in the US typically runs from second Sunday in March to first Sunday in November
+    const year = date.getFullYear();
+
+    // Second Sunday in March
+    const marchSecondSunday = new Date(year, 2, 1); // March 1st
+    const marchDayOfWeek = marchSecondSunday.getDay();
+    const daysToSecondSunday = ((7 - marchDayOfWeek + 7) % 7) + 7; // Second Sunday
+    marchSecondSunday.setDate(1 + daysToSecondSunday);
+
+    // First Sunday in November
+    const novemberFirstSunday = new Date(year, 10, 1); // November 1st
+    const novemberDayOfWeek = novemberFirstSunday.getDay();
+    const daysToFirstSunday = (7 - novemberDayOfWeek) % 7;
+    novemberFirstSunday.setDate(1 + daysToFirstSunday);
+
+    return date >= marchSecondSunday && date < novemberFirstSunday;
   };
+
+  const parseGameDateTime = useCallback(
+    (gameDate: string, gameTime: string) => {
+      const yyyy = Number(gameDate.slice(0, 4));
+      const mm = Number(gameDate.slice(4, 6));
+      const dd = Number(gameDate.slice(6, 8));
+      const m = gameTime.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
+      let hours = 12;
+      let minutes = 0;
+      if (m) {
+        hours = Number(m[1]);
+        minutes = m[2] ? Number(m[2]) : 0;
+        const meridiem = (m?.[3] ?? "a").toLowerCase();
+        if (meridiem === "p" && hours !== 12) hours += 12;
+        if (meridiem === "a" && hours === 12) hours = 0;
+      }
+
+      // Create date in EST/EDT timezone
+      // NFL games are scheduled in Eastern Time (EST/EDT)
+      const estDate = new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
+
+      // Convert to UTC by adjusting for Eastern timezone offset
+      // EST is UTC-5, EDT is UTC-4
+      // We need to determine if it's EST or EDT based on the date
+      const isDST = isEasternDaylightTime(estDate);
+      const offsetHours = isDST ? 4 : 5; // EDT is UTC-4, EST is UTC-5
+
+      // Create the actual game time in UTC
+      const utcGameTime = new Date(
+        estDate.getTime() + offsetHours * 60 * 60 * 1000
+      );
+
+      return utcGameTime;
+    },
+    []
+  );
 
   // Create sorted games for the selected week (same logic as Picks page)
   const sortedCurrentWeekGames = useMemo(() => {
@@ -119,11 +158,17 @@ const LivePicks = () => {
       })
       .sort((a, b) => {
         // Sort by game date and time
-        const dateA = parseGameDateTime(a.gameDate as string, a.gameTime as string);
-        const dateB = parseGameDateTime(b.gameDate as string, b.gameTime as string);
+        const dateA = parseGameDateTime(
+          a.gameDate as string,
+          a.gameTime as string
+        );
+        const dateB = parseGameDateTime(
+          b.gameDate as string,
+          b.gameTime as string
+        );
         return dateA.getTime() - dateB.getTime();
       });
-  }, [games, selectedWeek]);
+  }, [games, selectedWeek, parseGameDateTime]);
 
   const formatSpread = (spread: string | undefined, isFavorite: boolean) => {
     if (!spread || spread === "PK" || spread.trim() === "") return "LOADING";
@@ -366,7 +411,7 @@ const LivePicks = () => {
     };
 
     loadData();
-  }, [currentUser]); // Load data when user authentication changes
+  }, [currentUser, parseGameDateTime]); // Load data when user authentication changes
 
   // Load current user's picks to check if they've submitted
   useEffect(() => {
@@ -587,7 +632,7 @@ const LivePicks = () => {
   // Preload avatars when users data changes
   useEffect(() => {
     if (users.length > 0) {
-      const avatars = users.map(user => user.avatar);
+      const avatars = users.map((user) => user.avatar);
       preloadAvatars(avatars);
     }
   }, [users]);
@@ -1047,7 +1092,9 @@ const LivePicks = () => {
                   {Array.from({ length: maxGames }).map((_, gameIdx) => {
                     // Get the game info for this row to show spreads
                     const gameId = Object.keys(users[0]?.picks || {})[gameIdx];
-                    const game = sortedCurrentWeekGames.find((g) => String(g.gameID) === gameId);
+                    const game = sortedCurrentWeekGames.find(
+                      (g) => String(g.gameID) === gameId
+                    );
                     const odds = game ? oddsByGameId[game.gameID] : null;
 
                     return (
@@ -1413,7 +1460,9 @@ const LivePicks = () => {
                         />
                         <div className="w-full">
                           <p className="text-sm font-semibold text-foreground mb-2">
-                            {hasProp ? user.propBet.description : "No prop bet submitted"}
+                            {hasProp
+                              ? user.propBet.description
+                              : "No prop bet submitted"}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {user.userName}
@@ -1571,93 +1620,89 @@ const LivePicks = () => {
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                           {sortedCurrentWeekGames.map((game) => {
-                              const awayTeam = teams.find(
-                                (t) => t.teamID === game.teamIDAway
-                              );
-                              const homeTeam = teams.find(
-                                (t) => t.teamID === game.teamIDHome
-                              );
-                              const odds = oddsByGameId[game.gameID];
+                            const awayTeam = teams.find(
+                              (t) => t.teamID === game.teamIDAway
+                            );
+                            const homeTeam = teams.find(
+                              (t) => t.teamID === game.teamIDHome
+                            );
+                            const odds = oddsByGameId[game.gameID];
 
-                              // Count picks for this game
-                              const awayTeamPicks = transformedPicks.filter(
-                                (user) =>
-                                  user.picks.some(
-                                    (pick) => pick.team === awayTeam?.teamAbv
-                                  )
-                              ).length;
-                              const homeTeamPicks = transformedPicks.filter(
-                                (user) =>
-                                  user.picks.some(
-                                    (pick) => pick.team === homeTeam?.teamAbv
-                                  )
-                              ).length;
+                            // Count picks for this game
+                            const awayTeamPicks = transformedPicks.filter(
+                              (user) =>
+                                user.picks.some(
+                                  (pick) => pick.team === awayTeam?.teamAbv
+                                )
+                            ).length;
+                            const homeTeamPicks = transformedPicks.filter(
+                              (user) =>
+                                user.picks.some(
+                                  (pick) => pick.team === homeTeam?.teamAbv
+                                )
+                            ).length;
 
-                              // Determine which team is the favorite based on spread
-                              const awaySpread = odds?.awayTeamSpread;
-                              const homeSpread = odds?.homeTeamSpread;
-                              const awayIsFavorite = Boolean(
-                                awaySpread && awaySpread.startsWith("-")
-                              );
-                              const homeIsFavorite = Boolean(
-                                homeSpread && homeSpread.startsWith("-")
-                              );
+                            // Determine which team is the favorite based on spread
+                            const awaySpread = odds?.awayTeamSpread;
+                            const homeSpread = odds?.homeTeamSpread;
+                            const awayIsFavorite = Boolean(
+                              awaySpread && awaySpread.startsWith("-")
+                            );
+                            const homeIsFavorite = Boolean(
+                              homeSpread && homeSpread.startsWith("-")
+                            );
 
-                              return (
-                                <div
-                                  key={game.gameID}
-                                  className="p-3 bg-background rounded-lg border"
-                                >
-                                  <div className="flex items-center justify-between text-sm">
-                                    <div className="flex items-center gap-2">
-                                      <img
-                                        src={getTeamLogo(
-                                          awayTeam?.teamAbv || ""
-                                        )}
-                                        alt={awayTeam?.teamAbv}
-                                        className="w-4 h-4 rounded-full"
-                                      />
-                                      <span className="font-medium">
-                                        {awayTeam?.teamAbv}
-                                      </span>
-                                      <span className="text-muted-foreground">
-                                        {formatSpread(
-                                          odds?.awayTeamSpread,
-                                          awayIsFavorite
-                                        )}
-                                      </span>
-                                      <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
-                                        {awayTeamPicks}
-                                      </span>
-                                    </div>
-                                    <span className="text-muted-foreground">
-                                      @
+                            return (
+                              <div
+                                key={game.gameID}
+                                className="p-3 bg-background rounded-lg border"
+                              >
+                                <div className="flex items-center justify-between text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <img
+                                      src={getTeamLogo(awayTeam?.teamAbv || "")}
+                                      alt={awayTeam?.teamAbv}
+                                      className="w-4 h-4 rounded-full"
+                                    />
+                                    <span className="font-medium">
+                                      {awayTeam?.teamAbv}
                                     </span>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
-                                        {homeTeamPicks}
-                                      </span>
-                                      <span className="text-muted-foreground">
-                                        {formatSpread(
-                                          odds?.homeTeamSpread,
-                                          homeIsFavorite
-                                        )}
-                                      </span>
-                                      <span className="font-medium">
-                                        {homeTeam?.teamAbv}
-                                      </span>
-                                      <img
-                                        src={getTeamLogo(
-                                          homeTeam?.teamAbv || ""
-                                        )}
-                                        alt={homeTeam?.teamAbv}
-                                        className="w-4 h-4 rounded-full"
-                                      />
-                                    </div>
+                                    <span className="text-muted-foreground">
+                                      {formatSpread(
+                                        odds?.awayTeamSpread,
+                                        awayIsFavorite
+                                      )}
+                                    </span>
+                                    <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
+                                      {awayTeamPicks}
+                                    </span>
+                                  </div>
+                                  <span className="text-muted-foreground">
+                                    @
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
+                                      {homeTeamPicks}
+                                    </span>
+                                    <span className="text-muted-foreground">
+                                      {formatSpread(
+                                        odds?.homeTeamSpread,
+                                        homeIsFavorite
+                                      )}
+                                    </span>
+                                    <span className="font-medium">
+                                      {homeTeam?.teamAbv}
+                                    </span>
+                                    <img
+                                      src={getTeamLogo(homeTeam?.teamAbv || "")}
+                                      alt={homeTeam?.teamAbv}
+                                      className="w-4 h-4 rounded-full"
+                                    />
                                   </div>
                                 </div>
-                              );
-                            })}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
 
@@ -1673,7 +1718,9 @@ const LivePicks = () => {
                               className="w-10 h-10 rounded-full object-cover border-2 border-primary"
                               onError={(e) => {
                                 const target = e.target as HTMLImageElement;
-                                target.src = getUserAvatarFromName(user.userName);
+                                target.src = getUserAvatarFromName(
+                                  user.userName
+                                );
                               }}
                             />
                             <div>
@@ -1797,7 +1844,9 @@ const LivePicks = () => {
                                 className="w-8 h-8 rounded-full object-cover border-2 border-primary"
                                 onError={(e) => {
                                   const target = e.target as HTMLImageElement;
-                                  target.src = getUserAvatarFromName(user.userName);
+                                  target.src = getUserAvatarFromName(
+                                    user.userName
+                                  );
                                 }}
                               />
                               <span className="font-semibold">
@@ -1869,7 +1918,9 @@ const LivePicks = () => {
                               className="w-8 h-8 rounded-full object-cover border-2 border-primary"
                               onError={(e) => {
                                 const target = e.target as HTMLImageElement;
-                                target.src = getUserAvatarFromName(user.userName);
+                                target.src = getUserAvatarFromName(
+                                  user.userName
+                                );
                               }}
                             />
                             <span className="font-semibold">
@@ -1884,7 +1935,9 @@ const LivePicks = () => {
                                 className="w-20 h-20 rounded-full mx-auto mb-2 object-cover border-2 border-border"
                                 onError={(e) => {
                                   const target = e.target as HTMLImageElement;
-                                  target.src = getUserAvatarFromName(user.userName);
+                                  target.src = getUserAvatarFromName(
+                                    user.userName
+                                  );
                                 }}
                               />
                             ) : (
@@ -1982,7 +2035,9 @@ const LivePicks = () => {
                                 className="w-8 h-8 rounded-full object-cover border-2 border-primary"
                                 onError={(e) => {
                                   const target = e.target as HTMLImageElement;
-                                  target.src = getUserAvatarFromName(user.userName);
+                                  target.src = getUserAvatarFromName(
+                                    user.userName
+                                  );
                                 }}
                               />
                               <span className="font-semibold">
