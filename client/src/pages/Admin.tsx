@@ -31,7 +31,7 @@ import {
   Users,
 } from "lucide-react";
 // Removed mock data import - using real API data
-import { apiClient, apiOrigin } from "../lib/api";
+import { apiClient } from "../lib/api";
 import { getUserAvatar, preloadAvatars } from "../lib/avatarUtils";
 
 type ApiSuccess<T> = { success: true; data: T; message?: string };
@@ -236,7 +236,7 @@ const Admin = () => {
   // Preload avatars when users data changes
   useEffect(() => {
     if (users.length > 0) {
-      const avatars = users.map(user => user.avatar);
+      const avatars = users.map((user) => user.avatar);
       preloadAvatars(avatars);
     }
   }, [users]);
@@ -244,7 +244,7 @@ const Admin = () => {
   // Preload avatars when prop bets data changes
   useEffect(() => {
     if (propBets.length > 0) {
-      const avatars = propBets.map(propBet => propBet.user.avatar);
+      const avatars = propBets.map((propBet) => propBet.user.avatar);
       preloadAvatars(avatars);
     }
   }, [propBets]);
@@ -649,7 +649,8 @@ const Admin = () => {
                                     alt={propBet.user.username}
                                     className="w-6 h-6 rounded-full object-cover border border-gray-200"
                                     onError={(e) => {
-                                      const target = e.target as HTMLImageElement;
+                                      const target =
+                                        e.target as HTMLImageElement;
                                       target.src = getUserAvatar();
                                     }}
                                   />

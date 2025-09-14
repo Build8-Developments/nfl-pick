@@ -95,7 +95,9 @@ const Picks = () => {
     const september = new Date(season, 8, 1); // September 1st
     const dayOfWeek = september.getDay(); // 0 = Sunday, 1 = Monday, ..., 4 = Thursday
     const daysToThursday = (4 - dayOfWeek + 7) % 7;
-    const firstThursday = new Date(september.getTime() + daysToThursday * 24 * 60 * 60 * 1000);
+    const firstThursday = new Date(
+      september.getTime() + daysToThursday * 24 * 60 * 60 * 1000
+    );
     return firstThursday;
   };
 
@@ -182,7 +184,10 @@ const Picks = () => {
         return "scheduled" as const;
     }
     const now = new Date();
-    const dt = parseGameDateTime(game.gameDate as string, game.gameTime as string);
+    const dt = parseGameDateTime(
+      game.gameDate as string,
+      game.gameTime as string
+    );
     if (dt > now) return "scheduled" as const;
     const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
     if (dt > fourHoursAgo) return "in_progress" as const;
@@ -286,25 +291,28 @@ const Picks = () => {
         .map((n) => Number(n))
         .filter((n) => !Number.isNaN(n));
 
-        if (weekNums.length) {
-          const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
-          setAvailableWeeks(uniqueWeeks);
-          
-          // Calculate the actual current NFL week
-          const currentSeason = getCurrentSeason();
-          const computedCurrentWeek = computeCurrentWeek(currentSeason);
-          
-          // Default to computed current week, but respect URL week param if valid
-          const urlWeek = Number(searchParams.get("week") || NaN);
-          const isUrlWeekValid = Number.isFinite(urlWeek) && uniqueWeeks.includes(urlWeek);
-          
-          // Use URL week if valid, otherwise default to computed current week (or first available week if current week doesn't exist)
-          const defaultWeek = uniqueWeeks.includes(computedCurrentWeek) ? computedCurrentWeek : uniqueWeeks[0] || 1;
-          const initial = isUrlWeekValid ? urlWeek : defaultWeek;
-          
-          setCurrentWeek(initial);
-          setSelectedWeek(initial);
-        }
+      if (weekNums.length) {
+        const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
+        setAvailableWeeks(uniqueWeeks);
+
+        // Calculate the actual current NFL week
+        const currentSeason = getCurrentSeason();
+        const computedCurrentWeek = computeCurrentWeek(currentSeason);
+
+        // Default to computed current week, but respect URL week param if valid
+        const urlWeek = Number(searchParams.get("week") || NaN);
+        const isUrlWeekValid =
+          Number.isFinite(urlWeek) && uniqueWeeks.includes(urlWeek);
+
+        // Use URL week if valid, otherwise default to computed current week (or first available week if current week doesn't exist)
+        const defaultWeek = uniqueWeeks.includes(computedCurrentWeek)
+          ? computedCurrentWeek
+          : uniqueWeeks[0] || 1;
+        const initial = isUrlWeekValid ? urlWeek : defaultWeek;
+
+        setCurrentWeek(initial);
+        setSelectedWeek(initial);
+      }
       return () => {
         active = false;
       };
@@ -333,19 +341,22 @@ const Picks = () => {
         if (weekNums.length) {
           const uniqueWeeks = [...new Set(weekNums)].sort((a, b) => a - b);
           setAvailableWeeks(uniqueWeeks);
-          
+
           // Calculate the actual current NFL week
           const currentSeason = getCurrentSeason();
           const computedCurrentWeek = computeCurrentWeek(currentSeason);
-          
+
           // Default to computed current week, but respect URL week param if valid
           const urlWeek = Number(searchParams.get("week") || NaN);
-          const isUrlWeekValid = Number.isFinite(urlWeek) && uniqueWeeks.includes(urlWeek);
-          
+          const isUrlWeekValid =
+            Number.isFinite(urlWeek) && uniqueWeeks.includes(urlWeek);
+
           // Use URL week if valid, otherwise default to computed current week (or first available week if current week doesn't exist)
-          const defaultWeek = uniqueWeeks.includes(computedCurrentWeek) ? computedCurrentWeek : uniqueWeeks[0] || 1;
+          const defaultWeek = uniqueWeeks.includes(computedCurrentWeek)
+            ? computedCurrentWeek
+            : uniqueWeeks[0] || 1;
           const initial = isUrlWeekValid ? urlWeek : defaultWeek;
-          
+
           setCurrentWeek(initial);
           setSelectedWeek(initial);
         }
@@ -530,7 +541,7 @@ const Picks = () => {
 
   const canSubmit = () => {
     if (!selectedWeek || !games.length) return false;
-    
+
     const currentWeekGames = games.filter((g) => {
       const weekNum = Number(g.gameWeek.match(/\d+/)?.[0] ?? NaN);
       return !Number.isNaN(weekNum) && weekNum === selectedWeek;
@@ -548,47 +559,21 @@ const Picks = () => {
 
     // Allow submission if there's at least one available game
     const hasAvailableGames = currentWeekGames.some((g) => {
-      return getGameStatus(g) !== "completed" && canEditGame(g.gameDate, g.gameTime);
+      return (
+        getGameStatus(g) !== "completed" && canEditGame(g.gameDate, g.gameTime)
+      );
     });
 
     return hasAvailableGames;
   };
 
-  // Determine if any selected picks belong to games that are already locked/started
-  const getLockedSelectedGames = () => {
-    const byId = new Map<string, { gameDate: string; gameTime: string }>();
-    joinedCurrentWeekGames.forEach((g) => byId.set(g.id, { gameDate: g.gameDate, gameTime: g.gameTime }));
-    const locked: string[] = [];
-    Object.keys(picks).forEach((gameId) => {
-      const meta = byId.get(gameId);
-      if (!meta) return;
-      if (!canEditGame(meta.gameDate, meta.gameTime)) locked.push(gameId);
-    });
-    return locked;
-  };
-  const getUnlockedSelections = (): Record<string, string> => {
-    const byId = new Map<string, { gameDate: string; gameTime: string }>();
-    joinedCurrentWeekGames.forEach((g) => byId.set(g.id, { gameDate: g.gameDate, gameTime: g.gameTime }));
-    const result: Record<string, string> = {};
-    Object.entries(picks).forEach(([gameId, team]) => {
-      const meta = byId.get(gameId);
-      if (!meta) return;
-      if (canEditGame(meta.gameDate, meta.gameTime)) {
-        result[gameId] = team;
-      }
-    });
-    return result;
-  };
-
   const handleSubmit = async () => {
     const weekToSave = selectedWeek ?? currentWeek;
     if (!currentUser || !weekToSave) return;
-    
+
     // Get all available picks (both locked and unlocked)
     const allSelections = { ...picks };
-    const locked = getLockedSelectedGames();
-    const unlockedSelections = getUnlockedSelections();
-    
+
     if (!canSubmit()) return;
     setIsSubmitting(true);
 
