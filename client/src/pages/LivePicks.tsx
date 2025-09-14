@@ -109,6 +109,22 @@ const LivePicks = () => {
     return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
   };
 
+  // Create sorted games for the selected week (same logic as Picks page)
+  const sortedCurrentWeekGames = useMemo(() => {
+    return games
+      .filter((g) => {
+        if (selectedWeek == null) return true;
+        const weekNum = Number(g.gameWeek.match(/\d+/)?.[0] ?? NaN);
+        return !Number.isNaN(weekNum) && weekNum === selectedWeek;
+      })
+      .sort((a, b) => {
+        // Sort by game date and time
+        const dateA = parseGameDateTime(a.gameDate as string, a.gameTime as string);
+        const dateB = parseGameDateTime(b.gameDate as string, b.gameTime as string);
+        return dateA.getTime() - dateB.getTime();
+      });
+  }, [games, selectedWeek]);
+
   const formatSpread = (spread: string | undefined, isFavorite: boolean) => {
     if (!spread || spread === "PK" || spread.trim() === "") return "LOADING";
 
@@ -1031,7 +1047,7 @@ const LivePicks = () => {
                   {Array.from({ length: maxGames }).map((_, gameIdx) => {
                     // Get the game info for this row to show spreads
                     const gameId = Object.keys(users[0]?.picks || {})[gameIdx];
-                    const game = games.find((g) => String(g.gameID) === gameId);
+                    const game = sortedCurrentWeekGames.find((g) => String(g.gameID) === gameId);
                     const odds = game ? oddsByGameId[game.gameID] : null;
 
                     return (
@@ -1296,14 +1312,7 @@ const LivePicks = () => {
                       <div className="absolute -top-2 -right-2">
                         {(() => {
                           // Find the game for this week to check if it's finished
-                          const currentWeekGames = games.filter((g) => {
-                            const weekNum = Number(
-                              g.gameWeek.match(/\d+/)?.[0] ?? NaN
-                            );
-                            return (
-                              !Number.isNaN(weekNum) && weekNum === selectedWeek
-                            );
-                          });
+                          const currentWeekGames = sortedCurrentWeekGames;
 
                           // For now, we'll assume the game is finished if we have any games for this week
                           // In a real implementation, you'd check the specific game time
@@ -1561,17 +1570,7 @@ const LivePicks = () => {
                           Pick Distribution by Game
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {games
-                            .filter((g) => {
-                              const weekNum = Number(
-                                g.gameWeek.match(/\d+/)?.[0] ?? NaN
-                              );
-                              return (
-                                !Number.isNaN(weekNum) &&
-                                weekNum === selectedWeek
-                              );
-                            })
-                            .map((game) => {
+                          {sortedCurrentWeekGames.map((game) => {
                               const awayTeam = teams.find(
                                 (t) => t.teamID === game.teamIDAway
                               );
@@ -1689,7 +1688,7 @@ const LivePicks = () => {
                             {user.picks.map((pick, index) => {
                               const teamLogo = getTeamLogo(pick.team);
                               // Find the game to get the spread
-                              const game = games.find((g) => {
+                              const game = sortedCurrentWeekGames.find((g) => {
                                 const awayTeam = teams.find(
                                   (t) => t.teamID === g.teamIDAway
                                 );
@@ -1895,15 +1894,7 @@ const LivePicks = () => {
                             )}
                             {(() => {
                               // Find the game for this week to check if it's finished
-                              const currentWeekGames = games.filter((g) => {
-                                const weekNum = Number(
-                                  g.gameWeek.match(/\d+/)?.[0] ?? NaN
-                                );
-                                return (
-                                  !Number.isNaN(weekNum) &&
-                                  weekNum === selectedWeek
-                                );
-                              });
+                              const currentWeekGames = sortedCurrentWeekGames;
 
                               // For now, we'll assume the game is finished if we have any games for this week
                               const gameFinished =
