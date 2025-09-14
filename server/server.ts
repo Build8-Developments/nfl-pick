@@ -21,6 +21,7 @@ import {
   syncBettingOddsForAllGames,
 } from "./src/modules/sync/sync.service.js";
 import "./src/services/notification.service.js";
+import uploadRouter from "./src/modules/uploads/upload.route.js";
 
 const server = express();
 // Trust the reverse proxy (Caddy) so secure cookies work behind HTTPS
@@ -65,17 +66,6 @@ server.use(
   })
 );
 
-// Debug middleware to log session info
-// server.use((req, res, next) => {
-//   console.log("Request session debug:", {
-//     hasSession: !!req.session,
-//     sessionId: req.session.id,
-//     sessionKeys: req.session ? Object.keys(req.session) : [],
-//     cookies: req.headers.cookie,
-//   });
-//   next();
-// });
-
 // Global Middlewares
 server.use(
   helmet({
@@ -83,12 +73,14 @@ server.use(
     crossOriginResourcePolicy: { policy: "cross-origin" },
   })
 );
+
 server.use(
   cors({
-    origin:
-      NODE_ENV === "production"
-        ? ["https://nfl.blockhaven.net"]
-        : ["http://localhost:5173", "http://localhost:3000"],
+    origin: [
+      "http://localhost:5173",
+      "http://localhost:3000",
+      "https://nfl.blockhaven.net",
+    ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Last-Event-ID"],
@@ -96,8 +88,11 @@ server.use(
     optionsSuccessStatus: 204,
   })
 );
+
 server.use(express.json({ limit: "10mb" }));
+
 server.use(express.urlencoded({ extended: true }));
+
 // Serve uploads (avatars) statically so the client can access them
 server.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -109,6 +104,9 @@ const limiter = rateLimit({
   message: "Too many requests, please try again later.",
 });
 // server.use(limiter);
+
+// Uploads
+server.use("/uploads", uploadRouter);
 
 // Use the app routes
 server.use("/api/v1", app);

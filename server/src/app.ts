@@ -43,9 +43,6 @@ app.get("/cors-test", (req: Request, res: Response) => {
 app.use("/users", userRouter);
 app.use("/auth", authRouter);
 
-// Uploads
-app.use("/uploads", uploadRouter);
-
 // Sync
 app.use("/sync", syncRouter);
 
