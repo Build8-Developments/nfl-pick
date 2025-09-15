@@ -64,6 +64,7 @@ const Picks = () => {
   const [playerSearchOpen, setPlayerSearchOpen] = useState(false);
   const [playerSearchValue, setPlayerSearchValue] = useState("");
   const [players, setPlayers] = useState<IPlayer[]>([]);
+  const [selectedTdPlayerName, setSelectedTdPlayerName] = useState<string>("");
   const [teams, setTeams] = useState<ITeam[]>([]);
   const [games, setGames] = useState<IGame[]>([]);
   const [currentWeek, setCurrentWeek] = useState<number | null>(null);
@@ -270,6 +271,7 @@ const Picks = () => {
           selections?: Record<string, string>;
           lockOfWeek?: string;
           touchdownScorer?: string;
+          touchdownScorerName?: string;
           propBet?: string;
           propBetOdds?: string;
           propBetStatus?: string;
@@ -284,6 +286,8 @@ const Picks = () => {
           setPicks(selections);
           setLockOfWeek(data.lockOfWeek || "");
           setTouchdownScorer(data.touchdownScorer || "");
+          setSelectedTdPlayerName(data.touchdownScorerName || "");
+          setPlayerSearchValue(data.touchdownScorerName || "");
           setPropBet(data.propBet || "");
           setPropBetOdds(data.propBetOdds || "");
           setPropBetStatus(data.propBetStatus || null);
@@ -292,6 +296,7 @@ const Picks = () => {
           setPicks({});
           setLockOfWeek("");
           setTouchdownScorer("");
+          setSelectedTdPlayerName("");
           setPropBet("");
           setPropBetOdds("");
           setPropBetStatus(null);
@@ -427,68 +432,63 @@ const Picks = () => {
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
-    const toFetch = joinedCurrentWeekGames
+    const allIds = joinedCurrentWeekGames
       .map((g) => g.raw.gameID)
-      .filter((id): id is string => typeof id === "string" && id.length > 0)
-      .filter((id) => !memCache.get(`odds:${id}`));
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
 
-    if (toFetch.length === 0) return;
+    if (allIds.length === 0) return;
 
-    const processRequestsWithDelay = async () => {
-      const results: Array<{
-        gameId: string;
-        res?: BettingOddsResponse | ApiWrapped<BettingOddsResponse> | undefined;
-      }> = [];
-
-      for (let i = 0; i < toFetch.length; i++) {
-        if (!active) break;
-
-        const gameId = toFetch[i];
-        try {
-          const res = await apiClient.get<
-            BettingOddsResponse | ApiWrapped<BettingOddsResponse>
-          >(`betting-odds/${encodeURIComponent(gameId)}`, {
-            signal: controller.signal,
-          });
-          results.push({ gameId, res });
-        } catch {
-          results.push({ gameId, res: undefined });
-        }
-
-        if (i < toFetch.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        }
+    // Load from cache immediately
+    const cached: Record<string, { awayTeamSpread?: string; homeTeamSpread?: string }> = {};
+    const missing: string[] = [];
+    for (const id of allIds) {
+      const c = memCache.get(`odds:${id}`) as
+        | { awayTeamSpread?: string; homeTeamSpread?: string }
+        | undefined;
+      if (c) {
+        cached[id] = c;
+      } else {
+        missing.push(id);
       }
+    }
+    if (Object.keys(cached).length) {
+      setOddsByGameId((prev) => ({ ...cached, ...prev }));
+    }
 
-      if (!active) return;
+    if (missing.length === 0) return;
 
-      setOddsByGameId((prev) => {
-        const next = { ...prev };
-        for (const { gameId, res } of results) {
-          if (!res) continue;
-          const payload = res as
-            | BettingOddsResponse
-            | ApiWrapped<BettingOddsResponse>;
-          let odds: BettingOddsResponse["odds"] | undefined;
-          if (
-            payload &&
-            (payload as ApiWrapped<BettingOddsResponse>).data !== undefined
-          ) {
-            odds = (payload as ApiWrapped<BettingOddsResponse>).data?.odds;
-          } else {
-            odds = (payload as BettingOddsResponse).odds;
+    const fetchBatch = async () => {
+      try {
+        const res = await apiClient.post<
+          | { oddsByGameId: Record<string, any> }
+          | { success: boolean; data?: { oddsByGameId: Record<string, any> } }
+        >(
+          "betting-odds/batch",
+          { gameIds: missing },
+          { signal: controller.signal }
+        );
+
+        const payload = res as
+          | { oddsByGameId: Record<string, any> }
+          | { success: boolean; data?: { oddsByGameId: Record<string, any> } };
+        const oddsByGameIdResp = (payload as any).oddsByGameId || (payload as any).data?.oddsByGameId || {};
+
+        setOddsByGameId((prev) => {
+          const next = { ...prev } as Record<string, { awayTeamSpread?: string; homeTeamSpread?: string }>;
+          for (const [gid, odds] of Object.entries(oddsByGameIdResp || {})) {
+            const awayTeamSpread = (odds as any)?.odds?.awayTeamSpread ?? (odds as any)?.awayTeamSpread;
+            const homeTeamSpread = (odds as any)?.odds?.homeTeamSpread ?? (odds as any)?.homeTeamSpread;
+            next[gid] = { awayTeamSpread, homeTeamSpread };
+            memCache.set(`odds:${gid}`, next[gid]);
           }
-          next[gameId] = {
-            awayTeamSpread: odds?.awayTeamSpread,
-            homeTeamSpread: odds?.homeTeamSpread,
-          };
-          memCache.set(`odds:${gameId}`, next[gameId]);
-        }
-        return next;
-      });
+          return next;
+        });
+      } catch {
+        // ignore
+      }
     };
 
-    processRequestsWithDelay();
+    fetchBatch();
 
     return () => {
       active = false;
@@ -521,6 +521,7 @@ const Picks = () => {
     // Remove client-side validation - let the server handle it based on week timing
     setTouchdownScorer(playerId);
     setPlayerSearchValue(playerName);
+    setSelectedTdPlayerName(playerName);
     setPlayerSearchOpen(false);
   };
 
@@ -621,20 +622,40 @@ const Picks = () => {
     const weekToSave = selectedWeek ?? currentWeek;
     if (!currentUser || !weekToSave) return;
 
-    // Get all available picks (both locked and unlocked)
-    const allSelections = { ...picks };
+    // Build a selections object including only games that are still editable (not started / before lockout)
+    const currentWeekGames = games.filter((g) => {
+      const weekNum = Number(g.gameWeek.match(/\d+/)?.[0] ?? NaN);
+      return !Number.isNaN(weekNum) && weekNum === weekToSave;
+    });
+
+    const editableGameIds = new Set(
+      currentWeekGames
+        .filter((g) => getGameStatus(g as IGame) !== "completed" && canEditGame(g.gameDate, g.gameTime))
+        .map((g) => String(g.gameID))
+    );
+
+    const selectionsFiltered: Record<string, string> = {};
+    for (const [gid, team] of Object.entries(picks)) {
+      if (editableGameIds.has(String(gid))) {
+        selectionsFiltered[String(gid)] = team as string;
+      }
+    }
 
     if (!canSubmit()) return;
     setIsSubmitting(true);
 
-    // Submit all current selections (both locked and unlocked)
-    const selections: Record<string, string> = { ...allSelections };
+    // Submit only editable selections
+    const selections: Record<string, string> = { ...selectionsFiltered };
+
+    // Only send lockOfWeek if it refers to one of the submitted selections (prevents server rejection)
+    const selectedTeamsSet = new Set(Object.values(selections));
+    const lockOfWeekToSend = lockOfWeek && selectedTeamsSet.has(lockOfWeek) ? lockOfWeek : undefined;
 
     // Debug: print the exact payload being sent
     const payload = {
       week: weekToSave,
       selections,
-      lockOfWeek,
+      ...(lockOfWeekToSend ? { lockOfWeek: lockOfWeekToSend } : {}),
       touchdownScorer,
       propBet,
       propBetOdds,
@@ -714,6 +735,33 @@ const Picks = () => {
       controller.abort();
     };
   }, [playerSearchOpen, playerSearchValue]);
+
+  // Hydrate saved touchdownScorer name if only ID is present
+  useEffect(() => {
+    const id = touchdownScorer?.trim();
+    if (!id) return;
+    if (selectedTdPlayerName && selectedTdPlayerName.trim().length > 0) return;
+
+    let active = true;
+    apiClient
+      .get<{ success: boolean; data?: IPlayer }>(`players/${id}`)
+      .then((res) => {
+        if (!active) return;
+        const name = res?.data?.longName || "";
+        if (name) {
+          setSelectedTdPlayerName(name);
+          setPlayerSearchValue(name);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        // noop
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [touchdownScorer, selectedTdPlayerName]);
 
   return (
     <div className="space-y-6">
@@ -1086,7 +1134,7 @@ const Picks = () => {
                   className="w-full justify-between"
                   disabled={!canEditPicks()}
                 >
-                  {playerSearchValue || "Search for a player..."}
+                  {playerSearchValue || selectedTdPlayerName || "Search for a player..."}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>

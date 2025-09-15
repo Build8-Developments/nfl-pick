@@ -47,6 +47,31 @@ const PickSchema = new Schema<IPick>(
 
 PickSchema.index({ user: 1, week: 1 }, { unique: true });
 
+// Ensure only one finalized pick per week can claim a specific Lock of the Week team
+// Uses a partial index so drafts or empty values don't collide
+PickSchema.index(
+  { week: 1, lockOfWeek: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      isFinalized: true,
+      lockOfWeek: { $type: "string", $ne: "" },
+    },
+  }
+);
+
+// Ensure only one finalized pick per week can claim a specific TD scorer
+PickSchema.index(
+  { week: 1, touchdownScorer: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      isFinalized: true,
+      touchdownScorer: { $type: "string", $ne: "" },
+    },
+  }
+);
+
 export const Pick = mongoose.model<IPick>("Pick", PickSchema);
 export default Pick;
 

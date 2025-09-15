@@ -12,12 +12,109 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { getUserAvatar } from "../lib/avatarUtils";
+import { useEffect } from "react";
+import { dashboardApi, apiClient } from "../lib/api";
 
 const Layout = () => {
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [seasonRecord, setSeasonRecord] = useState<{ wins: number; losses: number; winPct: number }>({ wins: 0, losses: 0, winPct: 0 });
+
+  useEffect(() => {
+    let isActive = true;
+    const computeFromPicks = async () => {
+      if (!currentUser?.id) {
+        if (isActive) setSeasonRecord({ wins: 0, losses: 0, winPct: 0 });
+        return;
+      }
+      try {
+        // Load games (for status) and weeks with picks
+        const [gamesRes, weeksRes] = await Promise.all([
+          apiClient.get<{ success: boolean; data?: any[] }>("games"),
+          apiClient.get<{ success: boolean; data?: number[] }>("picks/weeks"),
+        ]);
+
+        const games = Array.isArray(gamesRes.data) ? (gamesRes.data as any[]) : [];
+        const weeks = Array.isArray(weeksRes.data) ? (weeksRes.data as number[]) : [];
+
+        const getGameStatus = (game: {
+          gameTime: string;
+          gameStatus?: string;
+          gameStatusCode?: string;
+          gameDate?: string;
+          gameTimeEpoch?: string;
+        }) => {
+          if (game.gameStatus) {
+            const status = game.gameStatus.toLowerCase();
+            if (status.includes("final") || status.includes("completed") || status.includes("finished")) return "completed" as const;
+            if (status.includes("in_progress") || status.includes("live") || status.includes("active")) return "in_progress" as const;
+            if (status.includes("scheduled") || status.includes("upcoming") || status.includes("pre")) return "scheduled" as const;
+          }
+          if (game.gameStatusCode) {
+            const code = game.gameStatusCode.toLowerCase();
+            if (code.includes("final")) return "completed" as const;
+          }
+          const now = new Date();
+          const epochMs = (() => {
+            const e = game.gameTimeEpoch ? Number(game.gameTimeEpoch) : NaN;
+            return Number.isFinite(e) && e > 0 ? e * 1000 : NaN;
+          })();
+          const dt = Number.isFinite(epochMs) ? new Date(epochMs) : new Date(game.gameTime);
+          if (dt > now) return "scheduled" as const;
+          const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+          if (dt > sixHoursAgo) return "in_progress" as const;
+          return "completed" as const;
+        };
+
+        const parseWeekNum = (w?: string) => {
+          const m = (w || "").match(/\d+/)?.[0];
+          return m ? Number(m) : NaN;
+        };
+
+        const weekToFinishedIds = new Map<number, Set<string>>();
+        const uniqueWeeks = [...new Set(games.map((g) => parseWeekNum(g.gameWeek)).filter((n) => Number.isFinite(n)) as number[])];
+        for (const wk of uniqueWeeks) {
+          const finished = new Set<string>();
+          games
+            .filter((g) => parseWeekNum(g.gameWeek) === wk)
+            .forEach((g) => {
+              if (getGameStatus(g as any) === "completed") finished.add(String(g.gameID));
+            });
+          weekToFinishedIds.set(wk, finished);
+        }
+
+        let wins = 0;
+        let losses = 0;
+        for (const wk of weeks) {
+          const finishedIds = weekToFinishedIds.get(wk) || new Set<string>();
+          if (finishedIds.size === 0) continue;
+          const pickRes = await apiClient.get<{
+            success: boolean;
+            data?: { outcomes?: Record<string, boolean | null> } | null;
+          }>(`picks/${wk}`);
+          if (pickRes.success && pickRes.data?.outcomes) {
+            for (const [gid, outcome] of Object.entries(pickRes.data.outcomes)) {
+              if (!finishedIds.has(String(gid))) continue;
+              if (outcome === true) wins += 1;
+              else if (outcome === false) losses += 1;
+            }
+          }
+        }
+
+        const total = wins + losses;
+        const pct = total > 0 ? (wins / total) * 100 : 0;
+        if (isActive) setSeasonRecord({ wins, losses, winPct: pct });
+      } catch {
+        if (isActive) setSeasonRecord({ wins: 0, losses: 0, winPct: 0 });
+      }
+    };
+    computeFromPicks();
+    return () => {
+      isActive = false;
+    };
+  }, [currentUser?.id]);
 
   const handleLogout = () => {
     logout();
@@ -28,6 +125,7 @@ const Layout = () => {
     { name: "Dashboard", href: "/", icon: Home },
     { name: "Make Picks", href: "/picks", icon: FileText },
     { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
+    { name: "Results", href: "/results", icon: FileText },
     { name: "Live Picks", href: "/live-picks", icon: Home },
     ...(currentUser?.isAdmin
       ? [{ name: "Admin", href: "/admin", icon: Settings }]
@@ -123,12 +221,7 @@ const Layout = () => {
                     {currentUser?.name}
                   </p>
                   <p className="text-muted-foreground">
-                    {currentUser?.seasonRecord.wins}-
-                    {currentUser?.seasonRecord.losses}(
-                    {(currentUser?.seasonRecord.percentage ?? 0 * 100).toFixed(
-                      1
-                    )}
-                    %)
+                    {seasonRecord.wins}-{seasonRecord.losses} ({seasonRecord.winPct.toFixed(1)}%)
                   </p>
                 </div>
               </div>

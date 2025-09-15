@@ -85,6 +85,10 @@ const LivePicks = () => {
   const isFetchingRef = useRef(false);
   const lastFetchAtRef = useRef(0);
 
+  // Live scoring state
+  const [leaderboardPointsByUser, setLeaderboardPointsByUser] = useState<Record<string, number>>({});
+  const [tdResultByUser, setTdResultByUser] = useState<Record<string, { isFinal: boolean; isCorrect: boolean }>>({});
+
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!currentUser) {
@@ -851,6 +855,10 @@ const LivePicks = () => {
           return getUserAvatarFromName(userName || "Unknown User");
         }
       })();
+
+      const tdResult = tdResultByUser[userId];
+      const totalPointsOverride = leaderboardPointsByUser[userId];
+
       return {
         userId,
         userName,
@@ -867,14 +875,14 @@ const LivePicks = () => {
           playerHeadshot:
             playerData[p.touchdownScorer || ""]?.espnHeadshot ||
             getPlayerHeadshot(getPlayerById(p.touchdownScorer || "")),
-          isCorrect: false,
+          isCorrect: tdResult ? tdResult.isCorrect : false,
         },
         propBet: {
           description: p.propBet || "",
           isCorrect: false,
           status: p.propBetStatus || "pending",
         },
-        totalPoints: 0,
+        totalPoints: typeof totalPointsOverride === "number" ? totalPointsOverride : 0,
       };
     });
   }, [
@@ -886,6 +894,8 @@ const LivePicks = () => {
     playerData,
     hasCurrentUserSubmitted,
     users,
+    leaderboardPointsByUser,
+    tdResultByUser,
   ]);
 
   // Fetch player data for TD scorers when picks are loaded
@@ -938,6 +948,83 @@ const LivePicks = () => {
     );
     return now > cutoffTime;
   };
+
+  // Fetch live leaderboard points and per-user TD scorer result (placed after transformedPicks)
+  useEffect(() => {
+    const fetchLiveScoring = async () => {
+      if (!selectedWeek || transformedPicks.length === 0) return;
+      try {
+        // Determine season like the server (Sep or later = current year, else previous)
+        const now = new Date();
+        const season = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+
+        // Leaderboard totals
+        const lb = await apiClient.get<{ success?: boolean; data?: Array<{ user: string; totalPoints: number }> }>(
+          `live-scoring/leaderboard`,
+          { query: { week: selectedWeek, season } }
+        );
+        const map: Record<string, number> = {};
+        const lbRows: Array<{ user: string; totalPoints: number }> = Array.isArray(lb.data) ? (lb.data as Array<{ user: string; totalPoints: number }>) : [];
+        lbRows.forEach((row) => {
+          if (row && row.user) {
+            map[String(row.user)] = Number(row.totalPoints ?? 0);
+          }
+        });
+        setLeaderboardPointsByUser(map);
+
+        // TD scorer correctness per user (only fetch for users we display)
+        const usersToFetch = transformedPicks.map((u) => u.userId);
+        const tdMap: Record<string, { isFinal: boolean; isCorrect: boolean }> = {};
+        type FlatRecord = {
+          isFinal?: boolean;
+          gameContext?: { isFinal?: boolean };
+          touchdownScorer?: { isCorrect?: boolean };
+          pickResults?: { touchdownScorer?: { isCorrect?: boolean } };
+        };
+        type WrappedRecords = { records: FlatRecord[] };
+        await Promise.all(
+          usersToFetch.map(async (uid) => {
+            try {
+              const resp = await apiClient.get<{ success?: boolean; data?: FlatRecord[] | WrappedRecords }>(
+                `live-scoring/user`,
+                { query: { userId: uid, week: selectedWeek, season } }
+              );
+              const data = resp.data;
+
+              if (Array.isArray(data)) {
+                for (const rec of data) {
+                  const pick = rec.touchdownScorer || rec.pickResults?.touchdownScorer;
+                  if (pick) {
+                    tdMap[uid] = {
+                      isFinal: Boolean(rec?.isFinal ?? rec?.gameContext?.isFinal),
+                      isCorrect: Boolean(pick.isCorrect),
+                    };
+                  }
+                }
+              } else if (data && Array.isArray((data as WrappedRecords).records)) {
+                const recs = (data as WrappedRecords).records;
+                for (const rec of recs) {
+                  const pick = rec.pickResults?.touchdownScorer;
+                  if (pick) {
+                    tdMap[uid] = {
+                      isFinal: Boolean(rec?.gameContext?.isFinal),
+                      isCorrect: Boolean(pick.isCorrect),
+                    };
+                  }
+                }
+              }
+            } catch {
+              // ignore per-user errors
+            }
+          })
+        );
+        setTdResultByUser(tdMap);
+      } catch {
+        // ignore; non-blocking UI enhancement
+      }
+    };
+    fetchLiveScoring();
+  }, [selectedWeek, transformedPicks]);
 
   return (
     <div className="space-y-6">
@@ -1361,16 +1448,17 @@ const LivePicks = () => {
                           // Find the game for this week to check if it's finished
                           const currentWeekGames = sortedCurrentWeekGames;
 
-                          // For now, we'll assume the game is finished if we have any games for this week
-                          // In a real implementation, you'd check the specific game time
-                          const gameFinished =
-                            currentWeekGames.length > 0 &&
-                            currentWeekGames.some((game) =>
-                              isGameFinished(
-                                game.gameDate as string,
-                                game.gameTime as string
-                              )
-                            );
+                          // Use per-user TD result finality if available; otherwise fall back to any-week-game heuristic
+                          const tdStatus = tdResultByUser[user.userId];
+                          const gameFinished = tdStatus
+                            ? tdStatus.isFinal
+                            : currentWeekGames.length > 0 &&
+                              currentWeekGames.some((game) =>
+                                isGameFinished(
+                                  game.gameDate as string,
+                                  game.gameTime as string
+                                )
+                              );
 
                           if (!gameFinished) {
                             // Game not finished yet, don't show outcome
@@ -1411,7 +1499,7 @@ const LivePicks = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               {transformedPicks.map((user) => {
                 const hasProp = Boolean(user.propBet.description);
                 const isCurrentUser =
@@ -1949,15 +2037,17 @@ const LivePicks = () => {
                               // Find the game for this week to check if it's finished
                               const currentWeekGames = sortedCurrentWeekGames;
 
-                              // For now, we'll assume the game is finished if we have any games for this week
-                              const gameFinished =
-                                currentWeekGames.length > 0 &&
-                                currentWeekGames.some((game) =>
-                                  isGameFinished(
-                                    game.gameDate as string,
-                                    game.gameTime as string
-                                  )
-                                );
+                              // Prefer per-user TD result finality
+                              const tdStatus = tdResultByUser[user.userId];
+                              const gameFinished = tdStatus
+                                ? tdStatus.isFinal
+                                : currentWeekGames.length > 0 &&
+                                  currentWeekGames.some((game) =>
+                                    isGameFinished(
+                                      game.gameDate as string,
+                                      game.gameTime as string
+                                    )
+                                  );
 
                               if (!gameFinished) {
                                 // Game not finished yet, don't show outcome

@@ -120,14 +120,46 @@ const Dashboard = () => {
       let totalWins = 0;
       let totalLosses = 0;
 
-      // Get all weeks with picks
+      // Build a lookup of finished game IDs per week from current season games in state
+      const weekToFinishedGameIds = new Map<number, Set<string>>();
+      const getWeekNumber = (gameWeek: string | undefined) => {
+        if (!gameWeek) return NaN;
+        const m = gameWeek.match(/\d+/)?.[0];
+        return m ? Number(m) : NaN;
+      };
+
+      // Reuse local helpers defined below (will be hoisted at runtime)
+      const finishedStatusForGame = (g: any) => getGameStatus(g) === "completed";
+
+      const uniqueWeeksFromGames = Array.from(
+        new Set(
+          games
+            .map((g) => getWeekNumber(g.gameWeek))
+            .filter((n) => Number.isFinite(n)) as number[]
+        )
+      ).sort((a, b) => a - b);
+
+      for (const wk of uniqueWeeksFromGames) {
+        const gamesForWeek = games.filter((g) => getWeekNumber(g.gameWeek) === wk);
+        const finishedIds = new Set<string>();
+        gamesForWeek.forEach((g) => {
+          if (finishedStatusForGame(g as any)) {
+            finishedIds.add(String(g.gameID));
+          }
+        });
+        weekToFinishedGameIds.set(wk, finishedIds);
+      }
+
+      // Get all weeks with any finalized picks (global), we'll filter to current season schedule
       const weeksRes = await apiClient.get<{
         success: boolean;
         data?: number[];
       }>("picks/weeks");
-      const weeks = Array.isArray(weeksRes.data) ? weeksRes.data : [];
+      const allWeeks = Array.isArray(weeksRes.data) ? weeksRes.data : [];
 
-      // For each week, get the user's picks and calculate wins/losses
+      // Consider only weeks present in current season schedule
+      const weeks = allWeeks.filter((w) => weekToFinishedGameIds.has(w));
+
       for (const week of weeks) {
         const pickRes = await apiClient.get<{
           success: boolean;
@@ -138,21 +170,16 @@ const Dashboard = () => {
           } | null;
         }>(`picks/${week}`);
 
-        if (
-          pickRes.success &&
-          pickRes.data?.isFinalized &&
-          pickRes.data.outcomes
-        ) {
-          const outcomes = pickRes.data.outcomes;
-          const wins = Object.values(outcomes).filter(
-            (outcome) => outcome === true
-          ).length;
-          const losses = Object.values(outcomes).filter(
-            (outcome) => outcome === false
-          ).length;
+        const finishedIdsForWeek = weekToFinishedGameIds.get(week) || new Set<string>();
 
-          totalWins += wins;
-          totalLosses += losses;
+        if (pickRes.success && pickRes.data?.outcomes) {
+          const outcomes = pickRes.data.outcomes;
+          // Count only games that have finished
+          Object.entries(outcomes).forEach(([gameId, outcome]) => {
+            if (!finishedIdsForWeek.has(String(gameId))) return;
+            if (outcome === true) totalWins += 1;
+            else if (outcome === false) totalLosses += 1;
+          });
         }
       }
 

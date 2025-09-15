@@ -21,6 +21,9 @@ import { apiClient } from "@/lib/api";
 import type { IGame } from "@/types/game.type";
 import type { ITeam } from "@/types/team.type";
 import { memCache } from "@/lib/memCache";
+import { manualWeekSheets, type ManualWeekSheet } from "@/data/manualResults";
+import ResultsSheet from "@/components/ResultsSheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type BackendPick = {
   _id: string;
@@ -42,6 +45,7 @@ const Results = () => {
   const [, setTeams] = useState<ITeam[]>([]);
   const [games, setGames] = useState<IGame[]>([]);
   const [picks, setPicks] = useState<BackendPick[]>([]);
+  const [autoSheet, setAutoSheet] = useState<ManualWeekSheet | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<
@@ -138,10 +142,14 @@ const Results = () => {
       .then((res) => {
         if (!active) return;
         setPicks(Array.isArray(res?.data) ? res.data! : []);
+        // Build auto sheet for the selected week (e.g., week 3 and beyond)
+        const auto = buildAutoSheet(selectedWeek, Array.isArray(res?.data) ? res.data! : [], games);
+        setAutoSheet(auto);
       })
       .catch(() => {
         if (!active) return;
         setPicks([]);
+        setAutoSheet(null);
       })
       .finally(() => {
         if (!active) return;
@@ -159,6 +167,84 @@ const Results = () => {
     }
     return map;
   }, [games]);
+
+  function buildAutoSheet(week: number, weekPicks: BackendPick[], allGames: IGame[]): ManualWeekSheet | null {
+    if (!Array.isArray(weekPicks) || weekPicks.length === 0) return null;
+    const normalize = (s?: string) => (s || "").trim().toLowerCase();
+    // Identify our three users
+    const players = {
+      gavin: weekPicks.find((p) => typeof p.user !== "string" && normalize(p.user?.username) === "gavin"),
+      luke: weekPicks.find((p) => typeof p.user !== "string" && normalize(p.user?.username) === "luke"),
+      mike: weekPicks.find((p) => typeof p.user !== "string" && normalize(p.user?.username) === "mike"),
+    } as const;
+    if (!players.gavin || !players.luke || !players.mike) return null;
+
+    // Order games by week and a stable key
+    const weekGames = allGames
+      .filter((g) => {
+        const m = (g.gameWeek || "").match(/\d+/)?.[0];
+        return m ? Number(m) === week : false;
+      })
+      .sort((a, b) => String(a.gameID).localeCompare(String(b.gameID)));
+
+    const gamesRows = weekGames.map((g, idx) => ({
+      gameNumber: idx + 1,
+      gavin: players.gavin?.selections?.[String(g.gameID)] || "",
+      luke: players.luke?.selections?.[String(g.gameID)] || "",
+      mike: players.mike?.selections?.[String(g.gameID)] || "",
+    }));
+
+    const countRecord = (p: BackendPick) => {
+      let wins = 0;
+      let losses = 0;
+      for (const [gid, outcome] of Object.entries(p.outcomes || {})) {
+        // only count games that belong to this week
+        if (!weekGames.some((g) => String(g.gameID) === String(gid))) continue;
+        if (outcome === true) wins += 1;
+        else if (outcome === false) losses += 1;
+      }
+      return { wins, losses };
+    };
+
+    const rG = countRecord(players.gavin);
+    const rL = countRecord(players.luke);
+    const rM = countRecord(players.mike);
+
+    const lockWin = (p: BackendPick) => {
+      if (!p.lockOfWeek) return 0;
+      const outcome = p.outcomes?.[String(p.lockOfWeek)] ?? null;
+      return outcome === true ? 1 : 0;
+    };
+
+    const totals = {
+      gavin: rG.wins + lockWin(players.gavin),
+      luke: rL.wins + lockWin(players.luke),
+      mike: rM.wins + lockWin(players.mike),
+    };
+
+    const sheet: ManualWeekSheet = {
+      week,
+      games: gamesRows,
+      record: { gavin: `${rG.wins} - ${rG.losses}`, luke: `${rL.wins} - ${rL.losses}`, mike: `${rM.wins} - ${rM.losses}` },
+      lockOTW: {
+        gavin: players.gavin.lockOfWeek || "",
+        luke: players.luke.lockOfWeek || "",
+        mike: players.mike.lockOfWeek || "",
+      },
+      tdScorer: {
+        gavin: players.gavin.touchdownScorer || "",
+        luke: players.luke.touchdownScorer || "",
+        mike: players.mike.touchdownScorer || "",
+      },
+      propOTW: {
+        gavin: players.gavin.propBet || "",
+        luke: players.luke.propBet || "",
+        mike: players.mike.propBet || "",
+      },
+      totals,
+    };
+    return sheet;
+  }
 
   return (
     <div className="space-y-6">
@@ -282,6 +368,24 @@ const Results = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Manual Week Sheets - swipeable/tabs */}
+      {([...manualWeekSheets, ...(autoSheet ? [autoSheet] : [])].length > 0) && (
+        <Tabs defaultValue={String(manualWeekSheets[manualWeekSheets.length - 1].week)}>
+          <TabsList className="mb-2">
+            {[...manualWeekSheets, ...(autoSheet ? [autoSheet] : [])].map((s) => (
+              <TabsTrigger key={s.week} value={String(s.week)}>
+                Week {s.week}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {[...manualWeekSheets, ...(autoSheet ? [autoSheet] : [])].map((s) => (
+            <TabsContent key={s.week} value={String(s.week)}>
+              <ResultsSheet sheet={s} />
+            </TabsContent>
+          ))}
+        </Tabs>
+      )}
     </div>
   );
 };

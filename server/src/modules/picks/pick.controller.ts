@@ -248,11 +248,20 @@ export const upsertMyPick = async (req: Request, res: Response) => {
     //     );
     // }
 
-    // Lock validation: if finalizing, ensure no selected game has passed kickoff
-    if (isFinalized && selections && Object.keys(selections).length > 0) {
-      const selectedGameIds = Object.keys(selections).filter(
-        (k) => typeof k === "string" && k.length > 0
+    // Lock validation: if finalizing, ensure no newly provided selection targets a game that has passed kickoff
+    if (
+      isFinalized &&
+      normalizedSelections &&
+      Object.keys(normalizedSelections).length > 0
+    ) {
+      const previouslySelected: Record<string, string> =
+        (existing?.selections as Record<string, string>) || {};
+      const newOrChangedEntries = Object.entries(normalizedSelections).filter(
+        ([gid, team]) => previouslySelected[gid] !== team
       );
+      const selectedGameIds = newOrChangedEntries
+        .map(([gid]) => gid)
+        .filter((k) => typeof k === "string" && k.length > 0);
       if (selectedGameIds.length > 0) {
         const games = await Game.find({
           gameID: { $in: selectedGameIds },
@@ -304,7 +313,9 @@ export const upsertMyPick = async (req: Request, res: Response) => {
     // TD Scorer uniqueness validation: check if player has been used before this season
     // But allow editing picks before the week starts
     if (touchdownScorer && touchdownScorer.trim().length > 0) {
-      const currentSeason = 2024; // You might want to make this dynamic based on current year
+      // Determine season dynamically: use September's year for NFL season label
+      const now = new Date();
+      const currentSeason = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
 
       // Check if this is an edit of an existing pick for the same week
       const isEditingSameWeek =
@@ -387,7 +398,7 @@ export const upsertMyPick = async (req: Request, res: Response) => {
       }
     }
 
-    // Finalization validation: ensure full submission for all not-yet-started games this week
+    // Finalization validation: ensure provided selections only target not-yet-started games this week
     if (isFinalized) {
       // Load all games for the requested week and determine which are still eligible (not started + 15m buffer)
       const weekGames = await Game.find({
@@ -420,7 +431,11 @@ export const upsertMyPick = async (req: Request, res: Response) => {
       });
       const eligibleGameIds = new Set(eligibleGames.map((g: any) => g.gameID));
       const requiredCount = eligibleGames.length;
-      const selectionEntries = Object.entries(selections || {});
+      const previouslySelected: Record<string, string> =
+        (existing?.selections as Record<string, string>) || {};
+      const selectionEntries = Object.entries(normalizedSelections || {}).filter(
+        ([gid, team]) => previouslySelected[gid] !== team
+      );
       const selectionCount = selectionEntries.length;
 
       if (weekGames.length === 0) {
@@ -444,7 +459,7 @@ export const upsertMyPick = async (req: Request, res: Response) => {
           missingGameIds,
         });
       }
-      // Ensure no selection targets an ineligible (already started) game
+      // Ensure no newly provided selection targets an ineligible (already started) game
       const invalidIds: string[] = [];
       for (const [gid] of selectionEntries) {
         if (!eligibleGameIds.has(gid)) invalidIds.push(gid as string);
@@ -533,6 +548,46 @@ export const upsertMyPick = async (req: Request, res: Response) => {
         }
       }
     }
+    // Before saving, enforce cross-user uniqueness for lockOfWeek and touchdownScorer within the same week
+    if (isFinalized) {
+      // Only check if values are present
+      if (lockOfWeek && lockOfWeek.trim().length > 0) {
+        const conflict = await Pick.findOne({
+          week: weekNum,
+          isFinalized: true,
+          lockOfWeek,
+          // Exclude the current user's existing doc if any
+          user: { $ne: targetUserObjectId },
+        }).lean();
+        if (conflict) {
+          return res
+            .status(400)
+            .json(
+              ApiResponse.error(
+                "That Lock of the Week has already been taken this week by another user."
+              )
+            );
+        }
+      }
+      if (touchdownScorer && touchdownScorer.trim().length > 0) {
+        const conflict = await Pick.findOne({
+          week: weekNum,
+          isFinalized: true,
+          touchdownScorer,
+          user: { $ne: targetUserObjectId },
+        }).lean();
+        if (conflict) {
+          return res
+            .status(400)
+            .json(
+              ApiResponse.error(
+                "That TD Scorer has already been taken this week by another user."
+              )
+            );
+        }
+      }
+    }
+
     // Safer upsert flow to avoid rare duplicate key conflicts
     console.log("[PICKS] Saving pick with data:", {
       propBet,
@@ -544,8 +599,14 @@ export const upsertMyPick = async (req: Request, res: Response) => {
     });
 
     // Build the update object, only including fields that have values
+    // Merge selections with existing so we don't drop already-locked picks.
+    const mergedSelections: Record<string, string> = {
+      ...(existing?.selections || {}),
+      ...normalizedSelections,
+    };
+
     const updateData: any = {
-      selections: normalizedSelections,
+      selections: mergedSelections,
       isFinalized: Boolean(isFinalized) || (existing?.isFinalized ?? false),
     };
 
@@ -634,7 +695,8 @@ export const upsertMyPick = async (req: Request, res: Response) => {
       touchdownScorer.trim().length > 0
     ) {
       try {
-        const currentSeason = 2024; // You might want to make this dynamic based on current year
+        const now = new Date();
+        const currentSeason = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
 
         // If there was a previous TD scorer for this week, remove it from usage tracking
         if (
@@ -689,7 +751,8 @@ export const upsertMyPick = async (req: Request, res: Response) => {
     ) {
       // If pick is finalized but TD scorer was removed, clean up the usage record
       try {
-        const currentSeason = 2024;
+        const now = new Date();
+        const currentSeason = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
         await UsedTdScorer.deleteOne({
           user: targetUserObjectId,
           season: currentSeason,
@@ -724,8 +787,12 @@ export const upsertMyPick = async (req: Request, res: Response) => {
         week: weekNum,
       });
       // Build the update object for retry, only including fields that have values
+      const retryMergedSelections: Record<string, string> = {
+        ...(existing?.selections || {}),
+        ...normalizedSelections,
+      };
       const retryUpdateData: any = {
-        selections: normalizedSelections,
+        selections: retryMergedSelections,
         isFinalized: Boolean(isFinalized),
       };
 
