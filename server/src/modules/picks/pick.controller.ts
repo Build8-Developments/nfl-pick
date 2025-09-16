@@ -789,6 +789,13 @@ export const upsertMyPick = async (req: Request, res: Response) => {
         userId: targetUserId,
         week: weekNum,
       });
+
+      // Fetch the existing pick document for retry logic
+      const existing = await Pick.findOne({
+        user: targetUserObjectId,
+        week: weekNum,
+      }).lean();
+
       // Build the update object for retry, only including fields that have values
       const retryMergedSelections: Record<string, string> = {
         ...(existing?.selections || {}),
