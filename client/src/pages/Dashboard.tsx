@@ -28,6 +28,7 @@ import {
   Users,
 } from "lucide-react";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
+import type { IGame } from "@/types/game.type";
 
 // Utility function to get player name by ID
 const getPlayerName = async (playerId: string): Promise<string> => {
@@ -129,7 +130,15 @@ const Dashboard = () => {
       };
 
       // Reuse local helpers defined below (will be hoisted at runtime)
-      const finishedStatusForGame = (g: any) => getGameStatus(g) === "completed";
+      const finishedStatusForGame = (g: {
+        gameID: string;
+        gameWeek: string;
+        gameTime: string;
+        gameTimeEpoch?: string;
+        gameStatus?: string;
+        gameStatusCode?: string;
+        gameDate?: string;
+      }) => getGameStatus(g) === "completed";
 
       const uniqueWeeksFromGames = Array.from(
         new Set(
@@ -140,10 +149,12 @@ const Dashboard = () => {
       ).sort((a, b) => a - b);
 
       for (const wk of uniqueWeeksFromGames) {
-        const gamesForWeek = games.filter((g) => getWeekNumber(g.gameWeek) === wk);
+        const gamesForWeek = games.filter(
+          (g) => getWeekNumber(g.gameWeek) === wk
+        );
         const finishedIds = new Set<string>();
         gamesForWeek.forEach((g) => {
-          if (finishedStatusForGame(g as any)) {
+          if (finishedStatusForGame(g)) {
             finishedIds.add(String(g.gameID));
           }
         });
@@ -170,7 +181,8 @@ const Dashboard = () => {
           } | null;
         }>(`picks/${week}`);
 
-        const finishedIdsForWeek = weekToFinishedGameIds.get(week) || new Set<string>();
+        const finishedIdsForWeek =
+          weekToFinishedGameIds.get(week) || new Set<string>();
 
         if (pickRes.success && pickRes.data?.outcomes) {
           const outcomes = pickRes.data.outcomes;
@@ -192,7 +204,7 @@ const Dashboard = () => {
         percentage: percentage,
       });
     } catch (error) {
-      // Keep default values on error
+      console.error("Error calculating season record:", error);
     }
   };
 
@@ -211,7 +223,7 @@ const Dashboard = () => {
         // First, get the summary, games, and weeks-with-finalized-picks
         const [summaryRes, gamesRes, weeksRes] = await Promise.all([
           dashboardApi.getSummary(),
-          apiClient.get<{ success: boolean; data?: any[] }>("games"),
+          apiClient.get<{ success: boolean; data?: IGame[] }>("games"),
           apiClient.get<{ success: boolean; data?: number[] }>("picks/weeks"),
         ]);
 
@@ -220,7 +232,7 @@ const Dashboard = () => {
         }
 
         const gameList = Array.isArray(gamesRes.data)
-          ? (gamesRes.data as any[])
+          ? (gamesRes.data as IGame[])
           : [];
         setGames(gameList);
 
@@ -365,7 +377,7 @@ const Dashboard = () => {
           });
           if (!gamesForWeek.length) return false;
           return !gamesForWeek.every(
-            (g) => getGameStatus(g as any) === "completed"
+            (g) => getGameStatus(g as IGame) === "completed"
           );
         });
 
@@ -377,7 +389,7 @@ const Dashboard = () => {
           });
           if (!gamesForWeek.length) return false;
           const allCompletedByStatus = gamesForWeek.every(
-            (g) => getGameStatus(g as any) === "completed"
+            (g) => getGameStatus(g as IGame) === "completed"
           );
           if (allCompletedByStatus) return true;
           // Fallback: if the latest kickoff in the week was more than 8 hours ago, consider week completed
@@ -802,5 +814,80 @@ const Dashboard = () => {
     </div>
   );
 };
+
+function getGameStatus(game: {
+  gameID: string;
+  gameWeek: string;
+  gameTime: string;
+  gameTimeEpoch?: string;
+  gameStatus?: string;
+  gameStatusCode?: string;
+  gameDate?: string;
+}) {
+  if (game.gameStatus) {
+    const status = game.gameStatus.toLowerCase();
+    if (
+      status.includes("final") ||
+      status.includes("completed") ||
+      status.includes("finished")
+    ) {
+      return "completed";
+    }
+    if (
+      status.includes("in_progress") ||
+      status.includes("live") ||
+      status.includes("active")
+    ) {
+      return "in_progress";
+    }
+    if (
+      status.includes("scheduled") ||
+      status.includes("upcoming") ||
+      status.includes("pre")
+    ) {
+      return "scheduled";
+    }
+  }
+  if (game.gameStatusCode) {
+    const code = game.gameStatusCode.toLowerCase();
+    if (code.includes("final")) return "completed";
+  }
+  const now = new Date();
+  const epochMs = (() => {
+    const e = game.gameTimeEpoch ? Number(game.gameTimeEpoch) : NaN;
+    return Number.isFinite(e) && e > 0 ? e * 1000 : NaN;
+  })();
+  const dt = Number.isFinite(epochMs)
+    ? new Date(epochMs)
+    : game.gameDate && game.gameTime
+    ? (() => {
+        // Parse gameDate (YYYYMMDD) and gameTime (e.g. "8:20p")
+        try {
+          const yyyy = Number(game.gameDate.slice(0, 4));
+          const mm = Number(game.gameDate.slice(4, 6));
+          const dd = Number(game.gameDate.slice(6, 8));
+          const m = game.gameTime
+            .trim()
+            .match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
+          let hours = 12;
+          let minutes = 0;
+          if (m) {
+            hours = Number(m[1]);
+            minutes = m[2] ? Number(m[2]) : 0;
+            const mer = m[3].toLowerCase();
+            if (mer === "p" && hours !== 12) hours += 12;
+            if (mer === "a" && hours === 12) hours = 0;
+          }
+          return new Date(yyyy, mm - 1, dd, hours, minutes, 0, 0);
+        } catch {
+          return new Date(game.gameTime);
+        }
+      })()
+    : new Date(game.gameTime);
+  if (dt > now) return "scheduled";
+  const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+  if (dt > sixHoursAgo) return "in_progress";
+  return "completed";
+}
 
 export default Dashboard;

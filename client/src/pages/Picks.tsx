@@ -79,11 +79,6 @@ const Picks = () => {
   const [usedTdScorers, setUsedTdScorers] = useState<string[]>([]);
   const isHydratingRef = useRef(false);
 
-  type BettingOddsResponse = {
-    odds?: { awayTeamSpread?: string; homeTeamSpread?: string };
-  };
-  type ApiWrapped<T> = { success?: boolean; data?: T };
-
   // Calculate current NFL week based on season start date
   const getCurrentSeason = () => {
     const now = new Date();
@@ -430,7 +425,6 @@ const Picks = () => {
   }, [currentUser]);
 
   useEffect(() => {
-    let active = true;
     const controller = new AbortController();
     const allIds = joinedCurrentWeekGames
       .map((g) => g.raw.gameID)
@@ -439,7 +433,10 @@ const Picks = () => {
     if (allIds.length === 0) return;
 
     // Load from cache immediately
-    const cached: Record<string, { awayTeamSpread?: string; homeTeamSpread?: string }> = {};
+    const cached: Record<
+      string,
+      { awayTeamSpread?: string; homeTeamSpread?: string }
+    > = {};
     const missing: string[] = [];
     for (const id of allIds) {
       const c = memCache.get(`odds:${id}`) as
@@ -460,8 +457,21 @@ const Picks = () => {
     const fetchBatch = async () => {
       try {
         const res = await apiClient.post<
-          | { oddsByGameId: Record<string, any> }
-          | { success: boolean; data?: { oddsByGameId: Record<string, any> } }
+          | {
+              oddsByGameId: Record<
+                string,
+                { awayTeamSpread?: string; homeTeamSpread?: string }
+              >;
+            }
+          | {
+              success: boolean;
+              data?: {
+                oddsByGameId: Record<
+                  string,
+                  { awayTeamSpread?: string; homeTeamSpread?: string }
+                >;
+              };
+            }
         >(
           "betting-odds/batch",
           { gameIds: missing },
@@ -469,15 +479,60 @@ const Picks = () => {
         );
 
         const payload = res as
-          | { oddsByGameId: Record<string, any> }
-          | { success: boolean; data?: { oddsByGameId: Record<string, any> } };
-        const oddsByGameIdResp = (payload as any).oddsByGameId || (payload as any).data?.oddsByGameId || {};
+          | {
+              oddsByGameId: Record<
+                string,
+                { awayTeamSpread?: string; homeTeamSpread?: string }
+              >;
+            }
+          | {
+              success: boolean;
+              data?: {
+                oddsByGameId: Record<
+                  string,
+                  { awayTeamSpread?: string; homeTeamSpread?: string }
+                >;
+              };
+            };
+        const oddsByGameIdResp =
+          (
+            payload as {
+              oddsByGameId?: Record<
+                string,
+                { awayTeamSpread?: string; homeTeamSpread?: string }
+              >;
+              data?: {
+                oddsByGameId?: Record<
+                  string,
+                  { awayTeamSpread?: string; homeTeamSpread?: string }
+                >;
+              };
+            }
+          ).oddsByGameId ||
+          (
+            payload as {
+              oddsByGameId?: Record<
+                string,
+                { awayTeamSpread?: string; homeTeamSpread?: string }
+              >;
+              data?: {
+                oddsByGameId?: Record<
+                  string,
+                  { awayTeamSpread?: string; homeTeamSpread?: string }
+                >;
+              };
+            }
+          ).data?.oddsByGameId ||
+          {};
 
         setOddsByGameId((prev) => {
-          const next = { ...prev } as Record<string, { awayTeamSpread?: string; homeTeamSpread?: string }>;
+          const next = { ...prev } as Record<
+            string,
+            { awayTeamSpread?: string; homeTeamSpread?: string }
+          >;
           for (const [gid, odds] of Object.entries(oddsByGameIdResp || {})) {
-            const awayTeamSpread = (odds as any)?.odds?.awayTeamSpread ?? (odds as any)?.awayTeamSpread;
-            const homeTeamSpread = (odds as any)?.odds?.homeTeamSpread ?? (odds as any)?.homeTeamSpread;
+            const awayTeamSpread = odds.awayTeamSpread ?? odds?.awayTeamSpread;
+            const homeTeamSpread = odds.homeTeamSpread ?? odds?.homeTeamSpread;
             next[gid] = { awayTeamSpread, homeTeamSpread };
             memCache.set(`odds:${gid}`, next[gid]);
           }
@@ -491,7 +546,6 @@ const Picks = () => {
     fetchBatch();
 
     return () => {
-      active = false;
       controller.abort();
     };
   }, [joinedCurrentWeekGames]);
@@ -630,7 +684,11 @@ const Picks = () => {
 
     const editableGameIds = new Set(
       currentWeekGames
-        .filter((g) => getGameStatus(g as IGame) !== "completed" && canEditGame(g.gameDate, g.gameTime))
+        .filter(
+          (g) =>
+            getGameStatus(g as IGame) !== "completed" &&
+            canEditGame(g.gameDate, g.gameTime)
+        )
         .map((g) => String(g.gameID))
     );
 
@@ -649,7 +707,8 @@ const Picks = () => {
 
     // Only send lockOfWeek if it refers to one of the submitted selections (prevents server rejection)
     const selectedTeamsSet = new Set(Object.values(selections));
-    const lockOfWeekToSend = lockOfWeek && selectedTeamsSet.has(lockOfWeek) ? lockOfWeek : undefined;
+    const lockOfWeekToSend =
+      lockOfWeek && selectedTeamsSet.has(lockOfWeek) ? lockOfWeek : undefined;
 
     // Debug: print the exact payload being sent
     const payload = {
@@ -1134,7 +1193,9 @@ const Picks = () => {
                   className="w-full justify-between"
                   disabled={!canEditPicks()}
                 >
-                  {playerSearchValue || selectedTdPlayerName || "Search for a player..."}
+                  {playerSearchValue ||
+                    selectedTdPlayerName ||
+                    "Search for a player..."}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
