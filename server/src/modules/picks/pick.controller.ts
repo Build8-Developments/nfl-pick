@@ -315,7 +315,8 @@ export const upsertMyPick = async (req: Request, res: Response) => {
     if (touchdownScorer && touchdownScorer.trim().length > 0) {
       // Determine season dynamically: use September's year for NFL season label
       const now = new Date();
-      const currentSeason = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+      const currentSeason =
+        now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
 
       // Check if this is an edit of an existing pick for the same week
       const isEditingSameWeek =
@@ -433,9 +434,9 @@ export const upsertMyPick = async (req: Request, res: Response) => {
       const requiredCount = eligibleGames.length;
       const previouslySelected: Record<string, string> =
         (existing?.selections as Record<string, string>) || {};
-      const selectionEntries = Object.entries(normalizedSelections || {}).filter(
-        ([gid, team]) => previouslySelected[gid] !== team
-      );
+      const selectionEntries = Object.entries(
+        normalizedSelections || {}
+      ).filter(([gid, team]) => previouslySelected[gid] !== team);
       const selectionCount = selectionEntries.length;
 
       if (weekGames.length === 0) {
@@ -696,7 +697,8 @@ export const upsertMyPick = async (req: Request, res: Response) => {
     ) {
       try {
         const now = new Date();
-        const currentSeason = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+        const currentSeason =
+          now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
 
         // If there was a previous TD scorer for this week, remove it from usage tracking
         if (
@@ -752,7 +754,8 @@ export const upsertMyPick = async (req: Request, res: Response) => {
       // If pick is finalized but TD scorer was removed, clean up the usage record
       try {
         const now = new Date();
-        const currentSeason = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+        const currentSeason =
+          now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
         await UsedTdScorer.deleteOne({
           user: targetUserObjectId,
           season: currentSeason,
