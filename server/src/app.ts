@@ -17,6 +17,7 @@ import dashboardRouter from "./modules/dashboard/dashboard.route.js";
 import uploadRouter from "./modules/uploads/upload.route.js";
 import liveScoringRouter from "./modules/live-scoring/liveScoring.route.js";
 import notificationRouter from "./modules/notifications/notification.route.js";
+import boxscoreRouter from "./modules/gameboxscore/boxscore.route.js";
 
 const app = express.Router();
 
@@ -78,6 +79,9 @@ app.use("/live-scoring", liveScoringRouter);
 
 // Notifications
 app.use("/notifications", notificationRouter);
+
+// get boxscore
+app.use("/boxscore", boxscoreRouter);
 
 app.use((req: Request, res: Response) => {
   res.status(404).json(ApiResponse.error(`Route ${req.originalUrl} not found`));

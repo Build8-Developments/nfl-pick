@@ -6,6 +6,7 @@ import {
   triggerSyncBettingOdds,
   triggerSyncBettingOddsForAllGames,
   triggerSyncTeams,
+  triggerSyncGameboxScore,
 } from "./sync.controller.js";
 
 const syncRouter = Router();
@@ -19,5 +20,6 @@ syncRouter.post(
   triggerSyncBettingOddsForAllGames
 );
 syncRouter.post("/run-teams", triggerSyncTeams);
+syncRouter.post("/sync-gameboxscore/:gameId", triggerSyncGameboxScore);
 
 export default syncRouter;

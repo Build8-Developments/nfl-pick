@@ -9,6 +9,7 @@ import {
 import { ApiResponse } from "../../utils/ApiResponse.js";
 import { insertPlayers } from "../players/players.service.js";
 import { syncTeams } from "../teams/team.service.js";
+import { upsertBoxscoreData } from "../gameboxscore/boxscore.service.js";
 
 export const triggerSyncNow = async (req: Request, res: Response) => {
   try {
@@ -87,5 +88,25 @@ export const triggerSyncTeams = async (req: Request, res: Response) => {
     return res.json(ApiResponse.success(result, "Teams synced successfully"));
   } catch (error) {
     return res.status(500).json(ApiResponse.error("Teams sync failed"));
+  }
+};
+
+export const triggerSyncGameboxScore = async (req: Request, res: Response) => {
+  try {
+    const { gameId } = req.params as { gameId: string };
+
+    const result = await upsertBoxscoreData(gameId);
+
+    if (!result) {
+      return res
+        .status(404)
+        .json(ApiResponse.error("No gamebox score found for game"));
+    }
+
+    return res.json(
+      ApiResponse.success(result, "Gamebox score synced successfully")
+    );
+  } catch (error) {
+    return res.status(500).json(ApiResponse.error("Gamebox score sync failed"));
   }
 };

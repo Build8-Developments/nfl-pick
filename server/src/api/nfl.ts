@@ -72,4 +72,23 @@ const getNFLTeams = async () => {
   return data.body;
 };
 
-export { getNFLGamesForWeek, getNFLPlayers, getNFLTeams };
+const getNFLGameBoxscore = async (gameId: string) => {
+  const res = await fetch(
+    `https://${RAPIDAPI_HOST}/getNFLBoxScore?gameID=${gameId}`,
+    {
+      headers: {
+        "x-rapidapi-key": RAPIDAPI_KEY,
+        "x-rapidapi-host": RAPIDAPI_HOST,
+      },
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch NFL game boxscore for game ${gameId}`);
+  }
+
+  const data = await res.json();
+  return data;
+};
+
+export { getNFLGamesForWeek, getNFLPlayers, getNFLTeams, getNFLGameBoxscore };
