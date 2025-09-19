@@ -231,6 +231,10 @@ export const syncBettingOddsForAllGames = async () => {
   const updatedGames: string[] = [];
   const markedNotLoaded: string[] = [];
 
+  // Clear out existing betting odds to avoid stale data
+  await BettingOdds.deleteMany({});
+  console.log("[Sync] Cleared existing betting odds");
+
   for (const game of allGames as unknown as IGame[]) {
     try {
       const apiBody = await getNFLBettingOddsForGame(game.gameID);

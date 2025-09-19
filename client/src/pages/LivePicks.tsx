@@ -86,8 +86,12 @@ const LivePicks = () => {
   const lastFetchAtRef = useRef(0);
 
   // Live scoring state
-  const [leaderboardPointsByUser, setLeaderboardPointsByUser] = useState<Record<string, number>>({});
-  const [tdResultByUser, setTdResultByUser] = useState<Record<string, { isFinal: boolean; isCorrect: boolean }>>({});
+  const [leaderboardPointsByUser, setLeaderboardPointsByUser] = useState<
+    Record<string, number>
+  >({});
+  const [tdResultByUser, setTdResultByUser] = useState<
+    Record<string, { isFinal: boolean; isCorrect: boolean }>
+  >({});
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -582,6 +586,15 @@ const LivePicks = () => {
     // Reload data
     const loadData = async () => {
       try {
+        // Reload picks first
+        if (selectedWeek) {
+          const picksRes = await apiClient.get<{
+            success?: boolean;
+            data?: BackendPick[];
+          }>(`picks/all/${selectedWeek}`);
+          setAllPicks(Array.isArray(picksRes?.data) ? picksRes.data : []);
+        }
+
         const [teamsRes, playersRes] = await Promise.all([
           apiClient.get<{ success: boolean; data?: ITeam[] }>("teams"),
           apiClient.get<{ success: boolean; data?: { items: IPlayer[] } }>(
@@ -597,6 +610,9 @@ const LivePicks = () => {
           : [];
         setPlayers(playerList);
         memCache.set("players", playerList);
+
+        // Note: Live scoring data will be fetched by the existing fetchLiveScoring useEffect
+        // after the picks data is updated and transformedPicks is recalculated
       } catch (err) {
         console.error("Error refreshing data:", err);
         setError("Failed to refresh data. Please try again.");
@@ -882,7 +898,8 @@ const LivePicks = () => {
           isCorrect: false,
           status: p.propBetStatus || "pending",
         },
-        totalPoints: typeof totalPointsOverride === "number" ? totalPointsOverride : 0,
+        totalPoints:
+          typeof totalPointsOverride === "number" ? totalPointsOverride : 0,
       };
     });
   }, [
@@ -949,22 +966,109 @@ const LivePicks = () => {
     return now > cutoffTime;
   };
 
+  // Helper function to get pick result color
+  const getPickResultColor = (
+    isCorrect: boolean | null,
+    isGameFinished: boolean
+  ) => {
+    if (!isGameFinished) {
+      return "border-gray-300 bg-gray-100"; // Pending - gray
+    }
+    if (isCorrect === true) {
+      return "border-green-500 bg-green-100"; // Winner - green
+    }
+    if (isCorrect === false) {
+      return "border-red-500 bg-red-100"; // Loser - red
+    }
+    return "border-gray-300 bg-gray-100"; // Default - gray
+  };
+
+  // Helper function to get lock result color
+  const getLockResultColor = (isCorrect: boolean, isGameFinished: boolean) => {
+    if (!isGameFinished) {
+      return "border-gray-300 bg-gray-100"; // Pending - gray
+    }
+    if (isCorrect) {
+      return "border-green-500 bg-green-100"; // Winner - green
+    }
+    return "border-red-500 bg-red-100"; // Loser - red
+  };
+
+  // Helper function to get TD scorer result status
+  const getTdScorerStatus = (isCorrect: boolean, isGameFinished: boolean) => {
+    if (!isGameFinished) {
+      return {
+        icon: null,
+        color: "border-orange-300 bg-orange-100",
+        label: "Pending",
+      };
+    }
+    if (isCorrect) {
+      return {
+        icon: <Check className="h-4 w-4 text-white" />,
+        color: "border-green-500 bg-green-100",
+        label: "Correct",
+      };
+    }
+    return {
+      icon: <X className="h-4 w-4 text-white" />,
+      color: "border-red-500 bg-red-100",
+      label: "Incorrect",
+    };
+  };
+
+  // Helper function to get prop bet result status
+  const getPropBetStatus = (status: string, isCorrect: boolean) => {
+    if (status === "pending") {
+      return {
+        icon: null,
+        color: "border-orange-300 bg-orange-100",
+        label: "Pending",
+      };
+    }
+    if (status === "approved" && isCorrect) {
+      return {
+        icon: <Check className="h-4 w-4 text-white" />,
+        color: "border-green-500 bg-green-100",
+        label: "Correct",
+      };
+    }
+    if (status === "approved" && !isCorrect) {
+      return {
+        icon: <X className="h-4 w-4 text-white" />,
+        color: "border-red-500 bg-red-100",
+        label: "Incorrect",
+      };
+    }
+    return {
+      icon: null,
+      color: "border-gray-300 bg-gray-100",
+      label: "Pending",
+    };
+  };
+
   // Fetch live leaderboard points and per-user TD scorer result (placed after transformedPicks)
   useEffect(() => {
     const fetchLiveScoring = async () => {
-      if (!selectedWeek || transformedPicks.length === 0) return;
+      if (!selectedWeek || allPicks.length === 0) return;
       try {
         // Determine season like the server (Sep or later = current year, else previous)
         const now = new Date();
-        const season = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+        const season =
+          now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
 
         // Leaderboard totals
-        const lb = await apiClient.get<{ success?: boolean; data?: Array<{ user: string; totalPoints: number }> }>(
-          `live-scoring/leaderboard`,
-          { query: { week: selectedWeek, season } }
-        );
+        const lb = await apiClient.get<{
+          success?: boolean;
+          data?: Array<{ user: string; totalPoints: number }>;
+        }>(`live-scoring/leaderboard`, {
+          query: { week: selectedWeek, season },
+        });
         const map: Record<string, number> = {};
-        const lbRows: Array<{ user: string; totalPoints: number }> = Array.isArray(lb.data) ? (lb.data as Array<{ user: string; totalPoints: number }>) : [];
+        const lbRows: Array<{ user: string; totalPoints: number }> =
+          Array.isArray(lb.data)
+            ? (lb.data as Array<{ user: string; totalPoints: number }>)
+            : [];
         lbRows.forEach((row) => {
           if (row && row.user) {
             map[String(row.user)] = Number(row.totalPoints ?? 0);
@@ -973,8 +1077,11 @@ const LivePicks = () => {
         setLeaderboardPointsByUser(map);
 
         // TD scorer correctness per user (only fetch for users we display)
-        const usersToFetch = transformedPicks.map((u) => u.userId);
-        const tdMap: Record<string, { isFinal: boolean; isCorrect: boolean }> = {};
+        const usersToFetch = allPicks.map((pick) =>
+          typeof pick.user === "string" ? pick.user : pick.user._id
+        );
+        const tdMap: Record<string, { isFinal: boolean; isCorrect: boolean }> =
+          {};
         type FlatRecord = {
           isFinal?: boolean;
           gameContext?: { isFinal?: boolean };
@@ -985,23 +1092,31 @@ const LivePicks = () => {
         await Promise.all(
           usersToFetch.map(async (uid) => {
             try {
-              const resp = await apiClient.get<{ success?: boolean; data?: FlatRecord[] | WrappedRecords }>(
-                `live-scoring/user`,
-                { query: { userId: uid, week: selectedWeek, season } }
-              );
+              const resp = await apiClient.get<{
+                success?: boolean;
+                data?: FlatRecord[] | WrappedRecords;
+              }>(`live-scoring/user`, {
+                query: { userId: uid, week: selectedWeek, season },
+              });
               const data = resp.data;
 
               if (Array.isArray(data)) {
                 for (const rec of data) {
-                  const pick = rec.touchdownScorer || rec.pickResults?.touchdownScorer;
+                  const pick =
+                    rec.touchdownScorer || rec.pickResults?.touchdownScorer;
                   if (pick) {
                     tdMap[uid] = {
-                      isFinal: Boolean(rec?.isFinal ?? rec?.gameContext?.isFinal),
+                      isFinal: Boolean(
+                        rec?.isFinal ?? rec?.gameContext?.isFinal
+                      ),
                       isCorrect: Boolean(pick.isCorrect),
                     };
                   }
                 }
-              } else if (data && Array.isArray((data as WrappedRecords).records)) {
+              } else if (
+                data &&
+                Array.isArray((data as WrappedRecords).records)
+              ) {
                 const recs = (data as WrappedRecords).records;
                 for (const rec of recs) {
                   const pick = rec.pickResults?.touchdownScorer;
@@ -1024,7 +1139,7 @@ const LivePicks = () => {
       }
     };
     fetchLiveScoring();
-  }, [selectedWeek, transformedPicks]);
+  }, [selectedWeek, allPicks]);
 
   return (
     <div className="space-y-6">
@@ -1285,10 +1400,25 @@ const LivePicks = () => {
                               );
                             }
                             const teamLogo = getTeamLogo(pick.team);
+                            // Check if game is finished to determine color
+                            const game = sortedCurrentWeekGames[gameIdx];
+                            const gameFinished = game
+                              ? isGameFinished(
+                                  game.gameDate as string,
+                                  game.gameTime as string
+                                )
+                              : false;
+
+                            // Get the color based on pick result
+                            const colorClasses = getPickResultColor(
+                              pick.isCorrect,
+                              gameFinished
+                            );
+
                             return (
                               <div
                                 key={user.userId}
-                                className="bg-white text-black p-3 rounded-lg text-center font-bold text-sm shadow-md border-2 border-gray-300 flex flex-col items-center justify-center"
+                                className={`text-black p-3 rounded-lg text-center font-bold text-sm shadow-md border-2 flex flex-col items-center justify-center ${colorClasses}`}
                               >
                                 <img
                                   src={teamLogo}
@@ -1337,14 +1467,26 @@ const LivePicks = () => {
                     ? currentUserPicks.user
                     : currentUserPicks.user?._id) === user.userId;
                 const teamLogo = getTeamLogo(user.lock.team);
+                // Check if any game is finished to determine color
+                const anyGameFinished = sortedCurrentWeekGames.some((game) =>
+                  isGameFinished(
+                    game.gameDate as string,
+                    game.gameTime as string
+                  )
+                );
+
+                // Get the color based on lock result
+                const colorClasses = getLockResultColor(
+                  user.lock.isCorrect,
+                  anyGameFinished
+                );
+
                 return (
                   <div
                     key={user.userId}
-                    className={`bg-white text-black p-4 rounded-lg text-center font-bold text-sm relative shadow-lg border-2 ${
-                      isCurrentUser
-                        ? "border-yellow-400 ring-2 ring-yellow-400"
-                        : "border-gray-300"
-                    }`}
+                    className={`text-black p-4 rounded-lg text-center font-bold text-sm relative shadow-lg border-2 ${
+                      isCurrentUser ? "ring-2 ring-yellow-400" : ""
+                    } ${colorClasses}`}
                   >
                     <div className="flex flex-col items-center gap-2">
                       <img
@@ -1460,19 +1602,32 @@ const LivePicks = () => {
                                 )
                               );
 
-                          if (!gameFinished) {
-                            // Game not finished yet, don't show outcome
-                            return null;
+                          const status = getTdScorerStatus(
+                            user.tdScorer.isCorrect,
+                            gameFinished
+                          );
+
+                          if (!status.icon) {
+                            // Show pending status
+                            return (
+                              <div className="w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center shadow-lg">
+                                <span className="text-white text-xs font-bold">
+                                  ?
+                                </span>
+                              </div>
+                            );
                           }
 
-                          // Game is finished, show the outcome
-                          return user.tdScorer.isCorrect ? (
-                            <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
-                              <Check className="h-4 w-4 text-white" />
-                            </div>
-                          ) : (
-                            <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg">
-                              <X className="h-4 w-4 text-white" />
+                          // Show result
+                          return (
+                            <div
+                              className={`w-6 h-6 rounded-full flex items-center justify-center shadow-lg ${
+                                user.tdScorer.isCorrect
+                                  ? "bg-green-500"
+                                  : "bg-red-500"
+                              }`}
+                            >
+                              {status.icon}
                             </div>
                           );
                         })()}
@@ -1525,7 +1680,7 @@ const LivePicks = () => {
                             </span>
                           )}
                           {user.propBet.status === "pending" && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200">
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 border border-orange-200">
                               Pending
                             </span>
                           )}
@@ -1563,12 +1718,39 @@ const LivePicks = () => {
                         </div>
                       </div>
                     </div>
-                    {/* Show only green check when approved; no X */}
-                    {hasProp && user.propBet.status === "approved" && (
+                    {/* Show result indicator */}
+                    {hasProp && (
                       <div className="absolute -top-2 -right-2">
-                        <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
-                          <Check className="h-4 w-4 text-white" />
-                        </div>
+                        {(() => {
+                          const status = getPropBetStatus(
+                            user.propBet.status,
+                            user.propBet.isCorrect
+                          );
+
+                          if (!status.icon) {
+                            // Show pending status
+                            return (
+                              <div className="w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center shadow-lg">
+                                <span className="text-white text-xs font-bold">
+                                  ?
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          // Show result
+                          return (
+                            <div
+                              className={`w-6 h-6 rounded-full flex items-center justify-center shadow-lg ${
+                                user.propBet.isCorrect
+                                  ? "bg-green-500"
+                                  : "bg-red-500"
+                              }`}
+                            >
+                              {status.icon}
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
